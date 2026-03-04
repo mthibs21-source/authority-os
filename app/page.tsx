@@ -160,7 +160,6 @@ export default function AuthorityOS() {
             </div>
             <div>
               <div className="text-white font-semibold leading-none">AuthorityOS</div>
-              <div className="text-xs text-slate-400">Built by Uplift Digital</div>
             </div>
           </div>
 
