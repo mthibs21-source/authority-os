@@ -56,9 +56,6 @@ function Footer() {
           © {new Date().getFullYear()} AuthorityOS
         </div>
 
-        <div>
-          Built for AI Search
-        </div>
 
       </div>
     </div>
