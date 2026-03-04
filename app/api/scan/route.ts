@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
-async function crawlPage(url:string){
+async function analyzePage(url:string){
 
   try{
 
     const res = await fetch(url,{
-      headers:{
-        "User-Agent":"AuthorityOSBot"
-      }
+      headers:{ "User-Agent":"AuthorityOSBot" }
     })
 
     const html = await res.text()
@@ -16,61 +14,58 @@ async function crawlPage(url:string){
     const $ = cheerio.load(html)
 
     const title = $("title").text()
+    const meta = $('meta[name="description"]').attr("content") || ""
 
-    const metaDescription = $('meta[name="description"]').attr("content") || ""
-
-    const h1Count = $("h1").length
-    const h2Count = $("h2").length
+    const h1 = $("h1").length
+    const h2 = $("h2").length
 
     const wordCount = $("body").text().split(/\s+/).length
+
+    const internalLinks = $("a[href^='/']").length
 
     const schemaTypes:string[] = []
 
     $('script[type="application/ld+json"]').each((_,el)=>{
 
-      const text = $(el).html()
+      const content = $(el).html()
 
-      if(!text) return
+      if(!content) return
 
-      if(text.includes("Organization")) schemaTypes.push("Organization")
-      if(text.includes("Product")) schemaTypes.push("Product")
-      if(text.includes("FAQPage")) schemaTypes.push("FAQ")
-      if(text.includes("Article")) schemaTypes.push("Article")
+      if(content.includes("Organization")) schemaTypes.push("Organization")
+      if(content.includes("Product")) schemaTypes.push("Product")
+      if(content.includes("FAQPage")) schemaTypes.push("FAQ")
+      if(content.includes("Article")) schemaTypes.push("Article")
 
     })
 
-    const internalLinks = $("a[href^='/']").length
-
     const faqDetected = html.toLowerCase().includes("faq")
 
-    const entitySignals = [
+    const entityWords = [
       "about us",
+      "our mission",
       "company",
       "founder",
-      "brand",
-      "our mission"
+      "team"
     ]
 
     let entityScore = 0
 
-    entitySignals.forEach(s=>{
-      if(html.toLowerCase().includes(s)){
+    entityWords.forEach(w=>{
+      if(html.toLowerCase().includes(w)){
         entityScore += 10
       }
     })
 
-    return {
-
+    return{
       title,
-      metaDescription,
-      h1Count,
-      h2Count,
+      meta,
+      h1,
+      h2,
       wordCount,
       schemaTypes,
       internalLinks,
       faqDetected,
       entityScore
-
     }
 
   }catch{
@@ -81,41 +76,34 @@ async function crawlPage(url:string){
 
 }
 
-function calculateScores(data:any){
+function score(data:any){
 
-  let authority = 40
+  let authority = 50
   let aio = 40
   let geo = 40
   let aeo = 40
   let citation = 40
 
   if(data.title.length > 10) authority += 10
+  if(data.meta.length > 50) authority += 10
 
-  if(data.metaDescription.length > 50) authority += 10
+  if(data.h1 === 1) authority += 10
 
-  if(data.h1Count === 1) authority += 10
+  if(data.wordCount > 800) authority += 10
 
-  if(data.h2Count > 2) authority += 5
+  if(data.internalLinks > 10) authority += 10
 
-  if(data.wordCount > 600) authority += 10
+  if(data.schemaTypes.length){
 
-  if(data.schemaTypes.length > 0){
-
-    aio += 15
+    aio += 20
     citation += 10
 
   }
 
   if(data.schemaTypes.includes("FAQ")){
 
-    aeo += 20
-    citation += 20
-
-  }
-
-  if(data.internalLinks > 5){
-
-    authority += 10
+    aeo += 25
+    citation += 25
 
   }
 
@@ -123,66 +111,85 @@ function calculateScores(data:any){
 
   citation += data.entityScore / 2
 
-  return {
+  return{
+    authority:Math.min(100,authority),
+    aio:Math.min(100,aio),
+    geo:Math.min(100,geo),
+    aeo:Math.min(100,aeo),
+    citation:Math.min(100,citation),
+    entity:data.entityScore
+  }
 
-    authority: Math.min(100,authority),
-    aio: Math.min(100,aio),
-    geo: Math.min(100,geo),
-    aeo: Math.min(100,aeo),
-    citation: Math.min(100,citation),
-    entity: Math.min(100,data.entityScore)
+}
+
+function fixEngine(data:any){
+
+  const fixes:any[] = []
+
+  if(!data.schemaTypes.length){
+
+    fixes.push({
+      task:"Add Organization schema",
+      impact:8
+    })
 
   }
+
+  if(!data.schemaTypes.includes("FAQ")){
+
+    fixes.push({
+      task:"Add FAQ schema to increase AI citations",
+      impact:18
+    })
+
+  }
+
+  if(data.wordCount < 800){
+
+    fixes.push({
+      task:`Increase content depth to ~900 words`,
+      impact:12
+    })
+
+  }
+
+  if(data.internalLinks < 10){
+
+    fixes.push({
+      task:"Add internal links between service pages",
+      impact:10
+    })
+
+  }
+
+  if(data.h1 !== 1){
+
+    fixes.push({
+      task:"Ensure exactly one H1 tag",
+      impact:6
+    })
+
+  }
+
+  return fixes.sort((a,b)=>b.impact-a.impact)
 
 }
 
 async function analyzeSite(url:string){
 
-  const page = await crawlPage(url)
+  const data = await analyzePage(url)
 
-  if(!page) return null
+  if(!data) return null
 
-  const scores = calculateScores(page)
+  const scores = score(data)
 
-  const recommendations:string[] = []
+  const fixes = fixEngine(data)
 
-  if(page.schemaTypes.length === 0){
-
-    recommendations.push("Add structured schema markup to help AI engines understand your content")
-
-  }
-
-  if(page.wordCount < 600){
-
-    recommendations.push("Increase page content depth to improve topical authority")
-
-  }
-
-  if(page.h1Count !== 1){
-
-    recommendations.push("Use exactly one H1 tag for better structure")
-
-  }
-
-  if(!page.faqDetected){
-
-    recommendations.push("Add FAQ content to increase AI citation likelihood")
-
-  }
-
-  if(page.internalLinks < 5){
-
-    recommendations.push("Increase internal linking between pages")
-
-  }
-
-  return {
-
+  return{
     scores,
-    schemaTypes:page.schemaTypes,
+    schemaTypes:data.schemaTypes,
     pagesScanned:1,
-    recommendations
-
+    executionPlan:fixes
   }
 
 }
@@ -198,9 +205,7 @@ export async function POST(req:Request){
 
   if(!main){
 
-    return NextResponse.json({
-      error:"Scan failed"
-    })
+    return NextResponse.json({ error:"Scan failed" })
 
   }
 
@@ -212,12 +217,9 @@ export async function POST(req:Request){
 
     if(comp){
 
-      competitorData = {
-
+      competitorData={
         url:competitor,
-        scores:comp.scores,
-        pagesScanned:comp.pagesScanned
-
+        scores:comp.scores
       }
 
     }
@@ -230,7 +232,7 @@ export async function POST(req:Request){
     schemaTypes:main.schemaTypes,
     pagesScanned:main.pagesScanned,
     competitor:competitorData,
-    recommendations:main.recommendations
+    executionPlan:main.executionPlan
 
   })
 
