@@ -15,7 +15,7 @@ function clamp(n: number, min = 0, max = 100) {
 function normalizeInputUrl(input: string) {
   const v = input.trim();
   if (!v) return "";
-  return v.startsWith("http://") || v.startsWith("https://") ? v : `https://${v}`;
+  return v.startsWith("http") ? v : `https://${v}`;
 }
 
 function idForTitle(title: string) {
@@ -38,31 +38,19 @@ function tierForScore(score: number): Tier {
 
 function tierStyles(tier: Tier) {
   if (tier === "Strong") {
-    return {
-      stroke: "#22c55e",
-      textClass: "text-green-300",
-      badgeClass: "text-green-300 border-green-500/30 bg-green-500/10",
-    };
+    return { stroke: "#22c55e", text: "text-green-300" };
   }
   if (tier === "Needs Work") {
-    return {
-      stroke: "#f97316",
-      textClass: "text-orange-300",
-      badgeClass: "text-orange-300 border-orange-500/30 bg-orange-500/10",
-    };
+    return { stroke: "#f97316", text: "text-orange-300" };
   }
-  return {
-    stroke: "#ef4444",
-    textClass: "text-red-300",
-    badgeClass: "text-red-300 border-red-500/30 bg-red-500/10",
-  };
+  return { stroke: "#ef4444", text: "text-red-300" };
 }
 
 export default function AuthorityOS() {
   const [url, setUrl] = useState("");
-  const [competitor, setCompetitor] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [crawlProgress, setCrawlProgress] = useState(0);
 
   const [scores, setScores] = useState<Scores>({
     authority: 0,
@@ -79,45 +67,48 @@ export default function AuthorityOS() {
     if (!normalizedUrl) return;
 
     setLoading(true);
-    setScanned(false);
     setError(null);
+    setScanned(false);
+    setCrawlProgress(0);
 
     try {
+      for (let i = 0; i <= 10; i++) {
+        await new Promise((r) => setTimeout(r, 120));
+        setCrawlProgress(i * 10);
+      }
+
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-
-        // IMPORTANT: Only send URL so backend keeps working
-        body: JSON.stringify({
-          url: normalizedUrl
-        }),
+        body: JSON.stringify({ url: normalizedUrl }),
       });
 
       const data = await res.json();
 
-      if (!data?.scores) throw new Error(data?.error || "Scan failed");
+      if (!data?.scores) throw new Error("Scan failed");
 
       setScores(data.scores);
       setRecommendations(data.recommendations || []);
       setScanned(true);
     } catch (err: any) {
-      setError(err?.message || "Failed to scan");
+      setError("Failed to scan");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#070d18] text-white overflow-hidden relative">
+    <div className="min-h-screen bg-[#070d18] text-white">
 
       <Hero />
 
       <section className="max-w-6xl mx-auto px-6 py-20">
-        <Card className="bg-[#111a2b]/80 backdrop-blur border border-[#eaff00]/30 p-10">
+
+        <Card className="bg-[#111a2b]/80 border border-[#eaff00]/30 p-10">
           <CardContent className="space-y-6">
 
             <h2 className="text-3xl font-bold text-[#eaff00]">
-              Run Real-Time Authority Scan
+              Run Authority Scan
             </h2>
 
             <div className="flex flex-col md:flex-row gap-4">
@@ -129,27 +120,38 @@ export default function AuthorityOS() {
                 className="bg-[#070d18] border-[#eaff00]/40 text-white"
               />
 
-              <Input
-                placeholder="Competitor URL (optional)"
-                value={competitor}
-                onChange={(e) => setCompetitor(e.target.value)}
-                className="bg-[#070d18] border-[#eaff00]/40 text-white"
-              />
-
               <Button
                 onClick={runScan}
                 disabled={loading}
-                className="bg-[#eaff00] hover:bg-[#d7f000] text-black font-bold px-8"
+                className="bg-[#eaff00] text-black font-bold px-8"
               >
-                {loading ? "Analyzing..." : "Scan Website"}
+                {loading ? "Scanning..." : "Scan Website"}
               </Button>
 
             </div>
+
+            {loading && (
+              <div className="space-y-2">
+
+                <div className="text-sm text-slate-400">
+                  Crawling site pages
+                </div>
+
+                <div className="h-2 bg-slate-700 rounded-full">
+                  <div
+                    className="bg-[#eaff00] h-full"
+                    style={{ width: `${crawlProgress}%` }}
+                  />
+                </div>
+
+              </div>
+            )}
 
             {error && <p className="text-red-400">{error}</p>}
 
           </CardContent>
         </Card>
+
       </section>
 
       {scanned && (
@@ -158,8 +160,6 @@ export default function AuthorityOS() {
           <RecommendationsPanel items={recommendations} />
         </section>
       )}
-
-      <StickyCTA />
     </div>
   );
 }
@@ -170,8 +170,7 @@ function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setScore((prev) => (prev >= 100 ? 5 : prev + 1));
-    }, 180);
-
+    }, 150);
     return () => clearInterval(interval);
   }, []);
 
@@ -183,57 +182,60 @@ function Hero() {
   const offset = circumference - (score / 100) * circumference;
 
   return (
-    <section className="relative max-w-6xl mx-auto px-6 pt-28 pb-24 grid lg:grid-cols-2 gap-16 items-center">
+    <section className="max-w-6xl mx-auto px-6 pt-28 pb-24 grid lg:grid-cols-2 gap-16 items-center">
 
       <div>
+
         <h1 className="text-6xl font-extrabold leading-tight">
-          Become the <span className="text-[#eaff00]">Authority</span> AI Engines Cite
+          Become the <span className="text-[#eaff00]">Authority</span> AI Cites
         </h1>
 
         <p className="mt-6 text-slate-300 text-lg max-w-xl">
-          AI search is replacing traditional SEO. This tool shows what fixes
-          will make your site authoritative to AI engines.
+          Measure how authoritative your website is for AI search engines.
         </p>
+
       </div>
 
-      <div className="flex justify-center">
+      <div className="relative flex justify-center">
 
-        <div className="relative">
+        <img
+          src="https://images.unsplash.com/photo-1639322537228-f710d846310a"
+          className="absolute w-[320px] opacity-20 blur-xl"
+        />
 
-          <svg width="220" height="220" className="-rotate-90">
-            <circle
-              cx="110"
-              cy="110"
-              r={radius}
-              stroke="#1e293b"
-              strokeWidth="16"
-              fill="transparent"
-            />
+        <svg width="220" height="220" className="-rotate-90">
 
-            <motion.circle
-              cx="110"
-              cy="110"
-              r={radius}
-              stroke={styles.stroke}
-              strokeWidth="16"
-              fill="transparent"
-              strokeDasharray={circumference}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-            />
+          <circle
+            cx="110"
+            cy="110"
+            r={radius}
+            stroke="#1e293b"
+            strokeWidth="16"
+            fill="transparent"
+          />
 
-          </svg>
+          <motion.circle
+            cx="110"
+            cy="110"
+            r={radius}
+            stroke={styles.stroke}
+            strokeWidth="16"
+            fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
 
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
+        </svg>
 
-            <div className={`text-5xl font-extrabold ${styles.textClass}`}>
-              {score}
-            </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
 
-            <div className="text-slate-400 text-sm">
-              Live Authority Preview
-            </div>
+          <div className={`text-5xl font-extrabold ${styles.text}`}>
+            {score}
+          </div>
 
+          <div className="text-slate-400 text-sm">
+            Authority Score
           </div>
 
         </div>
@@ -271,7 +273,7 @@ function Gauge({ label, value }: { label: string; value: number }) {
 
       <CardContent className="p-8 flex flex-col items-center gap-4">
 
-        <div className={`text-4xl font-bold ${styles.textClass}`}>
+        <div className={`text-4xl font-bold ${styles.text}`}>
           {safe}
         </div>
 
@@ -315,18 +317,6 @@ function RecommendationsPanel({ items }: any) {
 
         </Card>
       ))}
-
-    </div>
-  );
-}
-
-function StickyCTA() {
-  return (
-    <div className="fixed bottom-6 inset-x-0 z-50 flex justify-center">
-
-      <Button className="bg-[#eaff00] hover:bg-[#d7f000] text-black font-bold px-6 rounded-2xl">
-        Run Another Scan
-      </Button>
 
     </div>
   );
