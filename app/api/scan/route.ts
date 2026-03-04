@@ -118,7 +118,7 @@ function buildTopicMap(pages:any[]){
 
 function buildContentOpportunities(topicMap:any[]){
 
-  const ideas = []
+  const ideas: string[] = []
 
   topicMap.forEach(([topic])=>{
 
