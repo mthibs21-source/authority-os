@@ -9,8 +9,8 @@ function normalize(url:string){
 
 function color(score:number){
 
-  if(score >= 75) return "text-green-400"
-  if(score >= 45) return "text-orange-400"
+  if(score>=75) return "text-green-400"
+  if(score>=45) return "text-orange-400"
 
   return "text-red-400"
 
@@ -22,8 +22,8 @@ export default function Page(){
   const [competitor,setCompetitor] = useState("")
   const [depth,setDepth] = useState(10)
 
-  const [loading,setLoading] = useState(false)
   const [data,setData] = useState<any>(null)
+  const [loading,setLoading] = useState(false)
   const [error,setError] = useState("")
 
   async function scan(){
@@ -68,7 +68,7 @@ export default function Page(){
 
   <div className="max-w-6xl mx-auto px-6 py-10">
 
-  <div className="flex justify-between items-center mb-12">
+  <div className="flex justify-between items-center mb-10">
 
   <h1 className="text-3xl font-bold text-[#eaff00]">
   AuthorityOS
@@ -137,24 +137,19 @@ export default function Page(){
 
   {data &&
 
-  <div className="mt-12 space-y-10">
+  <div className="mt-12 space-y-12">
 
   <div className="grid md:grid-cols-4 gap-6">
 
   {Object.entries(data.scores).map(([key,value]:any)=>(
-
   <div key={key} className="bg-[#0f1a30] p-6 rounded border border-white/10">
-
-  <div className="text-sm text-gray-400 mb-2">
+  <div className="text-gray-400 text-sm mb-2">
   {key.toUpperCase()}
   </div>
-
   <div className={`text-4xl font-bold ${color(value)}`}>
   {value}
   </div>
-
   </div>
-
   ))}
 
   </div>
@@ -162,14 +157,32 @@ export default function Page(){
   <div className="bg-[#0f1a30] p-6 rounded border border-white/10">
 
   <h3 className="font-bold mb-4">
-  Recommendations
+  Topical Authority Map
+  </h3>
+
+  <div className="flex flex-wrap gap-2">
+
+  {data.topicMap.map((t:any,i:number)=>(
+  <span key={i} className="px-3 py-1 bg-[#eaff00]/20 rounded">
+  {t[0]} ({t[1]})
+  </span>
+  ))}
+
+  </div>
+
+  </div>
+
+  <div className="bg-[#0f1a30] p-6 rounded border border-white/10">
+
+  <h3 className="font-bold mb-4">
+  Content Opportunities
   </h3>
 
   <ul className="space-y-2">
 
-  {data.recommendations.map((r:string,i:number)=>(
+  {data.opportunities.map((o:string,i:number)=>(
   <li key={i}>
-  {r}
+  {o}
   </li>
   ))}
 
@@ -187,15 +200,8 @@ export default function Page(){
 
   {data.pages.map((p:any,i:number)=>(
   <div key={i} className="flex justify-between text-sm">
-
-  <div className="truncate w-[70%]">
-  {p.url}
-  </div>
-
-  <div className={color(p.score)}>
-  {p.score}
-  </div>
-
+  <div className="truncate w-[70%]">{p.url}</div>
+  <div className={color(p.score)}>{p.score}</div>
   </div>
   ))}
 
