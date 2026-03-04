@@ -2,36 +2,44 @@ import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
 function normalize(url:string){
-
   if(!url.startsWith("http")){
     return "https://" + url
   }
-
   return url
 }
 
-function score(text:string){
+function scorePage(text:string){
 
   const words = text.split(" ").length
-
-  const schema = text.includes("schema") ? 10 : 0
 
   const headings =
     (text.match(/<h1/g) || []).length +
     (text.match(/<h2/g) || []).length
 
-  const base = Math.min(words / 40, 50)
+  const schema =
+    text.includes("schema") ||
+    text.includes("application/ld+json")
 
-  return Math.min(100, Math.round(base + headings * 5 + schema))
+  const entitySignals =
+    text.match(/[A-Z][a-z]+ [A-Z][a-z]+/g)?.length || 0
 
+  let score = 0
+
+  score += Math.min(words / 50, 40)
+  score += headings * 5
+
+  if(schema) score += 15
+
+  score += Math.min(entitySignals / 20, 20)
+
+  return Math.min(100, Math.round(score))
 }
 
-async function crawl(url:string, depth:number){
+async function crawlSite(url:string, depth:number){
 
   const visited = new Set<string>()
-  const pages:any[] = []
-
   const queue = [url]
+  const pages:any[] = []
 
   while(queue.length && pages.length < depth){
 
@@ -53,7 +61,7 @@ async function crawl(url:string, depth:number){
 
       pages.push({
         url:current,
-        score:score(text)
+        score:scorePage(text)
       })
 
       $("a").each((_,el)=>{
@@ -82,7 +90,7 @@ export async function POST(req:Request){
 
   const normalized = normalize(url)
 
-  const pages = await crawl(normalized, depth || 10)
+  const pages = await crawlSite(normalized, depth || 10)
 
   const avg =
     pages.reduce((a,b)=>a+b.score,0) /
@@ -90,34 +98,36 @@ export async function POST(req:Request){
 
   const scores = {
     authority:Math.round(avg),
-    aio:Math.round(avg * 0.6),
+    aio:Math.round(avg * 0.65),
     geo:Math.round(avg * 0.6),
-    aeo:Math.round(avg * 0.4),
-    citation:Math.round(avg * 0.5),
+    aeo:Math.round(avg * 0.45),
+    citation:Math.round(avg * 0.55),
     entity:Math.round(avg * 0.5)
   }
 
+  const recommendations = []
+
+  if(scores.aeo < 60)
+    recommendations.push("Add FAQ schema and structured answers")
+
+  if(scores.entity < 60)
+    recommendations.push("Increase brand and entity mentions")
+
+  if(scores.citation < 60)
+    recommendations.push("Improve authoritative backlinks")
+
+  if(scores.authority < 60)
+    recommendations.push("Increase topical depth with more content clusters")
+
   return NextResponse.json({
-
     scores,
-
     pagesScanned:pages.length,
-
     pages,
-
     schemaTypes:[],
-
-    recommendations:[
-      "Add structured data schema",
-      "Increase topical depth",
-      "Improve entity signals",
-      "Add FAQ schema",
-      "Strengthen internal linking"
-    ],
-
+    recommendations,
     competitor: competitor
       ? {
-          url: competitor,
+          url:competitor,
           scores:{
             authority:70,
             aio:65,
@@ -126,7 +136,5 @@ export async function POST(req:Request){
           }
         }
       : null
-
   })
-
 }
