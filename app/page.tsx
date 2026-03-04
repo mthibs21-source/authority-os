@@ -1,85 +1,37 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useState } from "react"
 
-/* ---------------- HELPERS ---------------- */
-
-function normalizeUrl(url:string){
-
-  let u = url.trim()
-
-  if(!u.startsWith("http")){
-    u = "https://" + u
-  }
-
-  return u
+function normalize(url:string){
+  if(!url.startsWith("http")) return "https://" + url
+  return url
 }
 
-function scoreColor(score:number){
+function color(score:number){
 
   if(score >= 75) return "text-green-400"
-
   if(score >= 45) return "text-orange-400"
 
   return "text-red-400"
 
 }
 
-function screenshotUrl(url:string){
-
-  if(!url) return ""
-
-  return `https://image.thum.io/get/width/1400/${normalizeUrl(url)}`
-
-}
-
-/* ---------------- TYPES ---------------- */
-
-type Scores = {
-  authority:number
-  aio:number
-  geo:number
-  aeo:number
-  citation?:number
-  entity?:number
-}
-
-type ScanResponse = {
-  scores:Scores
-  schemaTypes?:string[]
-  recommendations?:string[]
-  pagesScanned?:number
-  competitor?:{
-    url:string
-    scores:Scores
-  }
-}
-
-/* ---------------- MAIN PAGE ---------------- */
-
-export default function AuthorityOS(){
+export default function Page(){
 
   const [url,setUrl] = useState("")
   const [competitor,setCompetitor] = useState("")
   const [depth,setDepth] = useState(10)
 
   const [loading,setLoading] = useState(false)
-  const [data,setData] = useState<ScanResponse|null>(null)
-  const [error,setError] = useState<string|null>(null)
+  const [data,setData] = useState<any>(null)
+  const [error,setError] = useState("")
 
-  const siteShot = useMemo(()=>screenshotUrl(url),[url])
+  async function scan(){
 
-  async function runScan(){
-
-    const normalized = normalizeUrl(url)
-
-    if(!normalized) return
+    if(!url) return
 
     setLoading(true)
-    setError(null)
+    setError("")
     setData(null)
 
     try{
@@ -88,7 +40,7 @@ export default function AuthorityOS(){
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({
-          url:normalized,
+          url:normalize(url),
           competitor,
           depth
         })
@@ -97,15 +49,13 @@ export default function AuthorityOS(){
       const json = await res.json()
 
       if(!json.scores){
-        throw new Error("Scan failed")
+        setError("Scan failed")
+      }else{
+        setData(json)
       }
 
-      setData(json)
-
     }catch{
-
       setError("Scan failed")
-
     }
 
     setLoading(false)
@@ -114,284 +64,150 @@ export default function AuthorityOS(){
 
   return(
 
-  <div className="min-h-screen bg-[#070d18] text-white">
+  <div className="min-h-screen bg-[#071020] text-white">
 
-  {/* HEADER */}
+  <div className="max-w-6xl mx-auto px-6 py-10">
 
-  <div className="max-w-6xl mx-auto px-6 pt-8 flex justify-between items-center">
+  <div className="flex justify-between items-center mb-12">
 
-  <h1 className="text-2xl font-bold text-[#eaff00]">
+  <h1 className="text-3xl font-bold text-[#eaff00]">
   AuthorityOS
   </h1>
 
-  <div className="text-sm text-slate-400">
+  <div className="text-sm text-gray-400">
   Built by Uplift Digital
   </div>
 
   </div>
 
+  <div className="bg-[#0f1a30] p-8 rounded-xl border border-[#eaff00]/20">
 
-  {/* HERO */}
-
-  <section className="max-w-6xl mx-auto px-6 pt-16 pb-12 grid lg:grid-cols-2 gap-10">
-
-  <div>
-
-  <h2 className="text-5xl font-bold leading-tight">
-
-  Make your website the one AI engines  
-  <span className="text-[#eaff00]"> trust and cite</span>
-
+  <h2 className="text-2xl font-bold mb-6">
+  Run Authority Scan
   </h2>
 
-  <p className="mt-6 text-slate-300 text-lg">
+  <div className="grid md:grid-cols-3 gap-4 mb-6">
 
-  AuthorityOS scans your site and identifies SEO signals,
-  schema markup, entity signals and AI citation likelihood.
-
-  </p>
-
-  </div>
-
-  <img
-  src="https://images.unsplash.com/photo-1639322537228-f710d846310a"
-  className="rounded-xl border border-[#eaff00]/30"
-  />
-
-  </section>
-
-
-  {/* SCANNER */}
-
-  <section className="max-w-6xl mx-auto px-6 pb-16">
-
-  <Card className="bg-[#111a2b] border border-[#eaff00]/30">
-
-  <CardContent className="p-8 space-y-6">
-
-  <h3 className="text-2xl font-bold text-[#eaff00]">
-
-  Scan a Website
-
-  </h3>
-
-  <div className="grid lg:grid-cols-3 gap-4">
-
-  <Input
-  placeholder="Your website"
+  <input
   value={url}
   onChange={(e)=>setUrl(e.target.value)}
-  className="bg-[#070d18] border-[#eaff00]/30 text-white"
+  placeholder="Website URL"
+  className="bg-[#071020] border border-[#eaff00]/20 p-3 rounded"
   />
 
-  <Input
-  placeholder="Competitor URL"
+  <input
   value={competitor}
   onChange={(e)=>setCompetitor(e.target.value)}
-  className="bg-[#070d18] border-[#eaff00]/30 text-white"
+  placeholder="Competitor URL"
+  className="bg-[#071020] border border-[#eaff00]/20 p-3 rounded"
   />
 
   <select
   value={depth}
   onChange={(e)=>setDepth(Number(e.target.value))}
-  className="bg-[#070d18] border border-[#eaff00]/30 px-3 py-2 rounded">
+  className="bg-[#071020] border border-[#eaff00]/20 p-3 rounded"
+  >
 
-  <option value={3}>Light scan</option>
-  <option value={10}>Standard scan</option>
-  <option value={25}>Deep scan</option>
+  <option value={3}>Light crawl</option>
+  <option value={10}>Standard crawl</option>
+  <option value={25}>Deep crawl</option>
 
   </select>
 
   </div>
 
-  <Button
-  onClick={runScan}
-  className="bg-[#eaff00] text-black font-bold hover:bg-[#d7f000]"
+  <button
+  onClick={scan}
+  className="bg-[#eaff00] text-black font-bold px-6 py-3 rounded hover:brightness-110"
   >
 
-  {loading ? "Scanning..." : "Run Scan"}
+  {loading ? "Scanning..." : "Scan"}
 
-  </Button>
-
-  {siteShot &&
-
-  <img
-  src={siteShot}
-  className="rounded-lg border border-[#eaff00]/20"
-  />
-
-  }
+  </button>
 
   {error &&
 
-  <div className="text-red-400">
+  <div className="text-red-400 mt-4">
   {error}
   </div>
 
   }
 
-  </CardContent>
-
-  </Card>
-
-  </section>
-
-
-  {/* RESULTS */}
+  </div>
 
   {data &&
 
-  <section className="max-w-6xl mx-auto px-6 pb-32 space-y-10">
-
-  <h3 className="text-3xl font-bold text-[#eaff00]">
-
-  Scan Results
-
-  </h3>
-
-
-  {/* SCORES */}
+  <div className="mt-12 space-y-10">
 
   <div className="grid md:grid-cols-4 gap-6">
 
   {Object.entries(data.scores).map(([key,value]:any)=>(
 
-  <Card key={key} className="bg-[#111a2b] border border-white/10">
+  <div key={key} className="bg-[#0f1a30] p-6 rounded border border-white/10">
 
-  <CardContent className="p-6">
-
-  <div className="text-slate-400 text-sm mb-2">
-
+  <div className="text-sm text-gray-400 mb-2">
   {key.toUpperCase()}
-
   </div>
 
-  <div className={`text-4xl font-bold ${scoreColor(value)}`}>
-
+  <div className={`text-4xl font-bold ${color(value)}`}>
   {value}
-
   </div>
 
-  </CardContent>
-
-  </Card>
+  </div>
 
   ))}
 
   </div>
 
+  <div className="bg-[#0f1a30] p-6 rounded border border-white/10">
 
-  {/* SCHEMA */}
-
-  <Card className="bg-[#111a2b] border border-white/10">
-
-  <CardContent className="p-6">
-
-  <div className="text-lg font-bold mb-3">
-
-  Schema detected
-
-  </div>
-
-  {data.schemaTypes?.length ?
-
-  <div className="flex flex-wrap gap-2">
-
-  {data.schemaTypes.map((s)=>(
-  <span key={s} className="px-3 py-1 rounded bg-[#eaff00]/10 border border-[#eaff00]/30 text-[#eaff00] text-sm">
-  {s}
-  </span>
-  ))}
-
-  </div>
-
-  :
-
-  <div className="text-slate-400">
-  No schema types detected
-  </div>
-
-  }
-
-  </CardContent>
-
-  </Card>
-
-
-  {/* COMPETITOR */}
-
-  <Card className="bg-[#111a2b] border border-white/10">
-
-  <CardContent className="p-6">
-
-  <div className="text-lg font-bold mb-2">
-
-  Competitor comparison
-
-  </div>
-
-  {data.competitor ?
-
-  <div className="text-slate-300">
-
-  Comparing against: {data.competitor.url}
-
-  </div>
-
-  :
-
-  <div className="text-slate-400">
-
-  Add a competitor URL to compare scores side by side.
-
-  </div>
-
-  }
-
-  </CardContent>
-
-  </Card>
-
-
-  {/* RECOMMENDATIONS */}
-
-  <Card className="bg-[#111a2b] border border-white/10">
-
-  <CardContent className="p-6">
-
-  <div className="text-lg font-bold mb-4">
-
+  <h3 className="font-bold mb-4">
   Recommendations
+  </h3>
 
-  </div>
+  <ul className="space-y-2">
 
-  <ul className="space-y-3">
-
-  {data.recommendations?.map((r,i)=>(
-  <li key={i} className="text-slate-200">
+  {data.recommendations.map((r:string,i:number)=>(
+  <li key={i}>
   {r}
   </li>
   ))}
 
   </ul>
 
-  </CardContent>
+  </div>
 
-  </Card>
+  <div className="bg-[#0f1a30] p-6 rounded border border-white/10">
 
-  </section>
+  <h3 className="font-bold mb-4">
+  Pages Crawled
+  </h3>
 
-  }
+  <div className="space-y-2">
 
+  {data.pages.map((p:any,i:number)=>(
+  <div key={i} className="flex justify-between text-sm">
 
-  {/* FOOTER */}
+  <div className="truncate w-[70%]">
+  {p.url}
+  </div>
 
-  <div className="fixed bottom-4 right-4 text-xs text-slate-400">
+  <div className={color(p.score)}>
+  {p.score}
+  </div>
 
-  Built by Uplift Digital
+  </div>
+  ))}
 
   </div>
 
+  </div>
+
+  </div>
+
+  }
+
+  </div>
 
   </div>
 
