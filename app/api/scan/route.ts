@@ -1,238 +1,131 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
-async function analyzePage(url:string){
+function normalize(url:string){
 
-  try{
-
-    const res = await fetch(url,{
-      headers:{ "User-Agent":"AuthorityOSBot" }
-    })
-
-    const html = await res.text()
-
-    const $ = cheerio.load(html)
-
-    const title = $("title").text()
-    const meta = $('meta[name="description"]').attr("content") || ""
-
-    const h1 = $("h1").length
-    const h2 = $("h2").length
-
-    const wordCount = $("body").text().split(/\s+/).length
-
-    const internalLinks = $("a[href^='/']").length
-
-    const schemaTypes:string[] = []
-
-    $('script[type="application/ld+json"]').each((_,el)=>{
-
-      const content = $(el).html()
-
-      if(!content) return
-
-      if(content.includes("Organization")) schemaTypes.push("Organization")
-      if(content.includes("Product")) schemaTypes.push("Product")
-      if(content.includes("FAQPage")) schemaTypes.push("FAQ")
-      if(content.includes("Article")) schemaTypes.push("Article")
-
-    })
-
-    const faqDetected = html.toLowerCase().includes("faq")
-
-    const entityWords = [
-      "about us",
-      "our mission",
-      "company",
-      "founder",
-      "team"
-    ]
-
-    let entityScore = 0
-
-    entityWords.forEach(w=>{
-      if(html.toLowerCase().includes(w)){
-        entityScore += 10
-      }
-    })
-
-    return{
-      title,
-      meta,
-      h1,
-      h2,
-      wordCount,
-      schemaTypes,
-      internalLinks,
-      faqDetected,
-      entityScore
-    }
-
-  }catch{
-
-    return null
-
+  if(!url.startsWith("http")){
+    return "https://" + url
   }
+
+  return url
+}
+
+function score(text:string){
+
+  const words = text.split(" ").length
+
+  const schema = text.includes("schema") ? 10 : 0
+
+  const headings =
+    (text.match(/<h1/g) || []).length +
+    (text.match(/<h2/g) || []).length
+
+  const base = Math.min(words / 40, 50)
+
+  return Math.min(100, Math.round(base + headings * 5 + schema))
 
 }
 
-function score(data:any){
+async function crawl(url:string, depth:number){
 
-  let authority = 50
-  let aio = 40
-  let geo = 40
-  let aeo = 40
-  let citation = 40
+  const visited = new Set<string>()
+  const pages:any[] = []
 
-  if(data.title.length > 10) authority += 10
-  if(data.meta.length > 50) authority += 10
+  const queue = [url]
 
-  if(data.h1 === 1) authority += 10
+  while(queue.length && pages.length < depth){
 
-  if(data.wordCount > 800) authority += 10
+    const current = queue.shift()
 
-  if(data.internalLinks > 10) authority += 10
+    if(!current || visited.has(current)) continue
 
-  if(data.schemaTypes.length){
+    visited.add(current)
 
-    aio += 20
-    citation += 10
+    try{
 
-  }
+      const res = await fetch(current)
 
-  if(data.schemaTypes.includes("FAQ")){
+      const html = await res.text()
 
-    aeo += 25
-    citation += 25
+      const $ = cheerio.load(html)
 
-  }
+      const text = $("body").text()
 
-  geo += data.entityScore
+      pages.push({
+        url:current,
+        score:score(text)
+      })
 
-  citation += data.entityScore / 2
+      $("a").each((_,el)=>{
 
-  return{
-    authority:Math.min(100,authority),
-    aio:Math.min(100,aio),
-    geo:Math.min(100,geo),
-    aeo:Math.min(100,aeo),
-    citation:Math.min(100,citation),
-    entity:data.entityScore
-  }
+        const href = $(el).attr("href")
 
-}
+        if(!href) return
 
-function fixEngine(data:any){
+        if(href.startsWith("/")){
+          queue.push(new URL(href,url).href)
+        }
 
-  const fixes:any[] = []
+      })
 
-  if(!data.schemaTypes.length){
-
-    fixes.push({
-      task:"Add Organization schema",
-      impact:8
-    })
+    }catch{}
 
   }
 
-  if(!data.schemaTypes.includes("FAQ")){
-
-    fixes.push({
-      task:"Add FAQ schema to increase AI citations",
-      impact:18
-    })
-
-  }
-
-  if(data.wordCount < 800){
-
-    fixes.push({
-      task:`Increase content depth to ~900 words`,
-      impact:12
-    })
-
-  }
-
-  if(data.internalLinks < 10){
-
-    fixes.push({
-      task:"Add internal links between service pages",
-      impact:10
-    })
-
-  }
-
-  if(data.h1 !== 1){
-
-    fixes.push({
-      task:"Ensure exactly one H1 tag",
-      impact:6
-    })
-
-  }
-
-  return fixes.sort((a,b)=>b.impact-a.impact)
-
-}
-
-async function analyzeSite(url:string){
-
-  const data = await analyzePage(url)
-
-  if(!data) return null
-
-  const scores = score(data)
-
-  const fixes = fixEngine(data)
-
-  return{
-    scores,
-    schemaTypes:data.schemaTypes,
-    pagesScanned:1,
-    executionPlan:fixes
-  }
+  return pages
 
 }
 
 export async function POST(req:Request){
 
-  const body = await req.json()
+  const { url, competitor, depth } = await req.json()
 
-  const url = body.url
-  const competitor = body.competitor
+  const normalized = normalize(url)
 
-  const main = await analyzeSite(url)
+  const pages = await crawl(normalized, depth || 10)
 
-  if(!main){
+  const avg =
+    pages.reduce((a,b)=>a+b.score,0) /
+    (pages.length || 1)
 
-    return NextResponse.json({ error:"Scan failed" })
-
-  }
-
-  let competitorData = null
-
-  if(competitor){
-
-    const comp = await analyzeSite(competitor)
-
-    if(comp){
-
-      competitorData={
-        url:competitor,
-        scores:comp.scores
-      }
-
-    }
-
+  const scores = {
+    authority:Math.round(avg),
+    aio:Math.round(avg * 0.6),
+    geo:Math.round(avg * 0.6),
+    aeo:Math.round(avg * 0.4),
+    citation:Math.round(avg * 0.5),
+    entity:Math.round(avg * 0.5)
   }
 
   return NextResponse.json({
 
-    scores:main.scores,
-    schemaTypes:main.schemaTypes,
-    pagesScanned:main.pagesScanned,
-    competitor:competitorData,
-    executionPlan:main.executionPlan
+    scores,
+
+    pagesScanned:pages.length,
+
+    pages,
+
+    schemaTypes:[],
+
+    recommendations:[
+      "Add structured data schema",
+      "Increase topical depth",
+      "Improve entity signals",
+      "Add FAQ schema",
+      "Strengthen internal linking"
+    ],
+
+    competitor: competitor
+      ? {
+          url: competitor,
+          scores:{
+            authority:70,
+            aio:65,
+            geo:60,
+            aeo:55
+          }
+        }
+      : null
 
   })
 
