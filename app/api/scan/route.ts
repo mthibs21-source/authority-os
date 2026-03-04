@@ -1,61 +1,46 @@
-import axios from "axios"
-import * as cheerio from "cheerio"
-import OpenAI from "openai"
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { url } = await req.json()
 
   try {
-    const response = await axios.get(url)
-    const html = response.data
-    const $ = cheerio.load(html)
 
-    const title = $("title").text()
-    const description = $('meta[name="description"]').attr("content") || ""
-    const h1Count = $("h1").length
-    const wordCount = $("body").text().split(/\s+/).length
-    const hasSchema = $('script[type="application/ld+json"]').length > 0
+    const { url } = await req.json();
 
-    let score = 0
-    if (title.length > 20 && title.length < 65) score += 25
-    if (description.length > 120) score += 25
-    if (h1Count === 1) score += 25
-    if (wordCount > 600) score += 25
+    if (!url) {
+      return NextResponse.json({ error: "Missing URL" }, { status: 400 });
+    }
 
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    })
+    // simulate analysis delay
+    await new Promise(r => setTimeout(r, 800));
 
-    const ai = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an SEO expert."
-        },
-        {
-          role: "user",
-          content: `Analyze this SEO data and give improvement recommendations:
-          
-          Title: ${title}
-          Description: ${description}
-          H1 count: ${h1Count}
-          Word count: ${wordCount}
-          Schema: ${hasSchema}`
-        }
-      ]
-    })
+    // generate demo scores
+    const scores = {
+      authority: Math.floor(Math.random() * 40) + 40,
+      aio: Math.floor(Math.random() * 40) + 40,
+      geo: Math.floor(Math.random() * 40) + 40,
+      aeo: Math.floor(Math.random() * 40) + 40,
+    };
 
-    return Response.json({
-      score,
-      title,
-      description,
-      h1Count,
-      wordCount,
-      hasSchema,
-      recommendations: ai.choices[0].message.content
-    })
+    const recommendations = [
+      "Add structured data schema to improve AI understanding",
+      "Expand topical authority with long-form content",
+      "Improve entity signals for brand recognition",
+      "Add FAQ sections targeting AI search queries",
+      "Increase internal linking across related pages"
+    ];
+
+    return NextResponse.json({
+      scores,
+      recommendations
+    });
+
   } catch (error) {
-    return Response.json({ error: "Failed to scan site" }, { status: 500 })
+
+    return NextResponse.json(
+      { error: "Scan failed" },
+      { status: 500 }
+    );
+
   }
+
 }
