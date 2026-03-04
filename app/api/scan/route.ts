@@ -2,40 +2,53 @@ import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
 function normalize(url:string){
-  if(!url.startsWith("http")){
-    return "https://" + url
-  }
+  if(!url.startsWith("http")) return "https://" + url
   return url
+}
+
+function extractTopic(text:string){
+
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z ]/g,"")
+    .split(" ")
+    .filter(w => w.length > 4)
+
+  const counts:Record<string,number> = {}
+
+  words.forEach(w=>{
+    counts[w] = (counts[w] || 0) + 1
+  })
+
+  const sorted =
+    Object.entries(counts)
+    .sort((a,b)=>b[1]-a[1])
+
+  return sorted.slice(0,5).map(x=>x[0])
 }
 
 function scorePage(text:string){
 
-  const words = text.split(" ").length
+  const wordCount = text.split(" ").length
 
   const headings =
-    (text.match(/<h1/g) || []).length +
-    (text.match(/<h2/g) || []).length
+    (text.match(/<h1/g)||[]).length +
+    (text.match(/<h2/g)||[]).length
 
   const schema =
-    text.includes("schema") ||
     text.includes("application/ld+json")
-
-  const entitySignals =
-    text.match(/[A-Z][a-z]+ [A-Z][a-z]+/g)?.length || 0
 
   let score = 0
 
-  score += Math.min(words / 50, 40)
+  score += Math.min(wordCount/50,40)
   score += headings * 5
 
   if(schema) score += 15
 
-  score += Math.min(entitySignals / 20, 20)
-
-  return Math.min(100, Math.round(score))
+  return Math.min(100,Math.round(score))
 }
 
-async function crawlSite(url:string, depth:number){
+async function crawl(url:string,depth:number){
 
   const visited = new Set<string>()
   const queue = [url]
@@ -59,9 +72,12 @@ async function crawlSite(url:string, depth:number){
 
       const text = $("body").text()
 
+      const topics = extractTopic(text)
+
       pages.push({
         url:current,
-        score:scorePage(text)
+        score:scorePage(text),
+        topics
       })
 
       $("a").each((_,el)=>{
@@ -81,7 +97,38 @@ async function crawlSite(url:string, depth:number){
   }
 
   return pages
+}
 
+function buildTopicMap(pages:any[]){
+
+  const map:Record<string,number> = {}
+
+  pages.forEach(p=>{
+
+    p.topics.forEach((t:string)=>{
+      map[t] = (map[t]||0)+1
+    })
+
+  })
+
+  return Object.entries(map)
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,10)
+}
+
+function buildContentOpportunities(topicMap:any[]){
+
+  const ideas = []
+
+  topicMap.forEach(([topic])=>{
+
+    ideas.push(`Complete guide to ${topic}`)
+    ideas.push(`${topic} best practices`)
+    ideas.push(`${topic} for beginners`)
+
+  })
+
+  return ideas.slice(0,10)
 }
 
 export async function POST(req:Request){
@@ -90,7 +137,7 @@ export async function POST(req:Request){
 
   const normalized = normalize(url)
 
-  const pages = await crawlSite(normalized, depth || 10)
+  const pages = await crawl(normalized, depth || 10)
 
   const avg =
     pages.reduce((a,b)=>a+b.score,0) /
@@ -98,33 +145,33 @@ export async function POST(req:Request){
 
   const scores = {
     authority:Math.round(avg),
-    aio:Math.round(avg * 0.65),
-    geo:Math.round(avg * 0.6),
-    aeo:Math.round(avg * 0.45),
-    citation:Math.round(avg * 0.55),
-    entity:Math.round(avg * 0.5)
+    aio:Math.round(avg*0.65),
+    geo:Math.round(avg*0.6),
+    aeo:Math.round(avg*0.45),
+    citation:Math.round(avg*0.55),
+    entity:Math.round(avg*0.5)
   }
 
-  const recommendations = []
+  const topicMap = buildTopicMap(pages)
 
-  if(scores.aeo < 60)
-    recommendations.push("Add FAQ schema and structured answers")
-
-  if(scores.entity < 60)
-    recommendations.push("Increase brand and entity mentions")
-
-  if(scores.citation < 60)
-    recommendations.push("Improve authoritative backlinks")
-
-  if(scores.authority < 60)
-    recommendations.push("Increase topical depth with more content clusters")
+  const opportunities =
+    buildContentOpportunities(topicMap)
 
   return NextResponse.json({
+
     scores,
-    pagesScanned:pages.length,
     pages,
-    schemaTypes:[],
-    recommendations,
+    pagesScanned:pages.length,
+    topicMap,
+    opportunities,
+
+    recommendations:[
+      "Add FAQ schema",
+      "Increase entity mentions",
+      "Strengthen internal linking",
+      "Add long form topic clusters"
+    ],
+
     competitor: competitor
       ? {
           url:competitor,
@@ -136,5 +183,7 @@ export async function POST(req:Request){
           }
         }
       : null
+
   })
+
 }
