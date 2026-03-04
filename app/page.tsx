@@ -1,323 +1,290 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { motion } from "framer-motion";
-
-type Scores = { authority: number; aio: number; geo: number; aeo: number };
-
-function clamp(n: number, min = 0, max = 100) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function normalizeInputUrl(input: string) {
-  const v = input.trim();
-  if (!v) return "";
-  return v.startsWith("http") ? v : `https://${v}`;
-}
-
-function idForTitle(title: string) {
-  let h = 2166136261;
-  for (let i = 0; i < title.length; i++) {
-    h ^= title.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return `fix_${(h >>> 0).toString(16)}`;
-}
-
-type Tier = "Critical" | "Needs Work" | "Strong";
-
-function tierForScore(score: number): Tier {
-  const v = clamp(score);
-  if (v >= 75) return "Strong";
-  if (v >= 45) return "Needs Work";
-  return "Critical";
-}
-
-function tierStyles(tier: Tier) {
-  if (tier === "Strong") {
-    return { stroke: "#22c55e", text: "text-green-300" };
-  }
-  if (tier === "Needs Work") {
-    return { stroke: "#f97316", text: "text-orange-300" };
-  }
-  return { stroke: "#ef4444", text: "text-red-300" };
-}
+import { useState } from "react";
 
 export default function AuthorityOS() {
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [scanned, setScanned] = useState(false);
-  const [crawlProgress, setCrawlProgress] = useState(0);
 
-  const [scores, setScores] = useState<Scores>({
-    authority: 0,
-    aio: 0,
-    geo: 0,
-    aeo: 0,
-  });
-
-  const [recommendations, setRecommendations] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [url,setUrl] = useState("")
+  const [loading,setLoading] = useState(false)
+  const [scores,setScores] = useState<any>(null)
+  const [recommendations,setRecommendations] = useState<string[]>([])
+  const [error,setError] = useState("")
 
   const runScan = async () => {
-    const normalizedUrl = normalizeInputUrl(url);
-    if (!normalizedUrl) return;
 
-    setLoading(true);
-    setError(null);
-    setScanned(false);
-    setCrawlProgress(0);
+    if(!url) return
 
-    try {
-      for (let i = 0; i <= 10; i++) {
-        await new Promise((r) => setTimeout(r, 120));
-        setCrawlProgress(i * 10);
-      }
+    setLoading(true)
+    setError("")
 
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: normalizedUrl }),
-      });
+    try{
 
-      const data = await res.json();
+      const res = await fetch("/api/scan",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ url })
+      })
 
-      if (!data?.scores) throw new Error("Scan failed");
+      const data = await res.json()
 
-      setScores(data.scores);
-      setRecommendations(data.recommendations || []);
-      setScanned(true);
-    } catch (err: any) {
-      setError("Failed to scan");
-    } finally {
-      setLoading(false);
+      if(!data?.scores) throw new Error()
+
+      setScores(data.scores)
+      setRecommendations(data.recommendations || [])
+
+    }catch{
+      setError("Scan failed")
     }
-  };
+
+    setLoading(false)
+  }
 
   return (
-    <div className="min-h-screen bg-[#070d18] text-white">
+    <main>
 
       <Hero />
 
-      <section className="max-w-6xl mx-auto px-6 py-20">
+      <AuthorityGraphic />
 
-        <Card className="bg-[#111a2b]/80 border border-[#eaff00]/30 p-10">
-          <CardContent className="space-y-6">
+      <FeatureSection />
 
-            <h2 className="text-3xl font-bold text-[#eaff00]">
-              Run Authority Scan
-            </h2>
+      <UseCaseSection />
 
-            <div className="flex flex-col md:flex-row gap-4">
+      <Scanner
+        url={url}
+        setUrl={setUrl}
+        runScan={runScan}
+        loading={loading}
+        error={error}
+      />
 
-              <Input
-                placeholder="Enter website URL"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="bg-[#070d18] border-[#eaff00]/40 text-white"
-              />
-
-              <Button
-                onClick={runScan}
-                disabled={loading}
-                className="bg-[#eaff00] text-black font-bold px-8"
-              >
-                {loading ? "Scanning..." : "Scan Website"}
-              </Button>
-
-            </div>
-
-            {loading && (
-              <div className="space-y-2">
-
-                <div className="text-sm text-slate-400">
-                  Crawling site pages
-                </div>
-
-                <div className="h-2 bg-slate-700 rounded-full">
-                  <div
-                    className="bg-[#eaff00] h-full"
-                    style={{ width: `${crawlProgress}%` }}
-                  />
-                </div>
-
-              </div>
-            )}
-
-            {error && <p className="text-red-400">{error}</p>}
-
-          </CardContent>
-        </Card>
-
-      </section>
-
-      {scanned && (
-        <section className="max-w-6xl mx-auto px-6 pb-48 space-y-16">
-          <ScoreDashboard scores={scores} />
-          <RecommendationsPanel items={recommendations} />
-        </section>
+      {scores && (
+        <Results
+          scores={scores}
+          recommendations={recommendations}
+        />
       )}
-    </div>
-  );
+
+    </main>
+  )
 }
 
-function Hero() {
-  const [score, setScore] = useState(5);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setScore((prev) => (prev >= 100 ? 5 : prev + 1));
-    }, 150);
-    return () => clearInterval(interval);
-  }, []);
-
-  const tier = tierForScore(score);
-  const styles = tierStyles(tier);
-
-  const radius = 80;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-
-  return (
-    <section className="max-w-6xl mx-auto px-6 pt-28 pb-24 grid lg:grid-cols-2 gap-16 items-center">
+function Hero(){
+  return(
+    <section className="max-w-6xl mx-auto px-6 pt-28 pb-20 grid lg:grid-cols-2 gap-16 items-center">
 
       <div>
 
         <h1 className="text-6xl font-extrabold leading-tight">
-          Become the <span className="text-[#eaff00]">Authority</span> AI Cites
+          Become the <span className="text-[#eaff00]">Authority</span> AI Engines Cite
         </h1>
 
         <p className="mt-6 text-slate-300 text-lg max-w-xl">
-          Measure how authoritative your website is for AI search engines.
+          AuthorityOS analyzes whether your website is trusted by AI search engines like ChatGPT, Perplexity, and Gemini.
         </p>
 
       </div>
 
-      <div className="relative flex justify-center">
+      <img
+        src="https://images.unsplash.com/photo-1639322537228-f710d846310a"
+        className="rounded-2xl border border-[#eaff00]/30 shadow-2xl"
+      />
 
-        <img
-          src="https://images.unsplash.com/photo-1639322537228-f710d846310a"
-          className="absolute w-[320px] opacity-20 blur-xl"
-        />
+    </section>
+  )
+}
 
-        <svg width="220" height="220" className="-rotate-90">
+function AuthorityGraphic(){
+  return(
+    <section className="max-w-6xl mx-auto px-6 py-20 grid lg:grid-cols-2 gap-16 items-center">
 
-          <circle
-            cx="110"
-            cy="110"
-            r={radius}
-            stroke="#1e293b"
-            strokeWidth="16"
-            fill="transparent"
-          />
+      <div>
 
-          <motion.circle
-            cx="110"
-            cy="110"
-            r={radius}
-            stroke={styles.stroke}
-            strokeWidth="16"
-            fill="transparent"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-          />
+        <h2 className="text-4xl font-bold text-[#eaff00]">
+          How AuthorityOS Works
+        </h2>
 
-        </svg>
+        <p className="mt-6 text-slate-300 text-lg">
+          AI search engines rank answers based on trust, entity signals,
+          structured data, and topical authority.
+        </p>
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <ul className="mt-6 space-y-3 text-slate-300">
+          <li>• Entity recognition</li>
+          <li>• Schema and semantic markup</li>
+          <li>• Topical authority</li>
+          <li>• AI citation probability</li>
+        </ul>
 
-          <div className={`text-5xl font-extrabold ${styles.text}`}>
-            {score}
-          </div>
+      </div>
 
-          <div className="text-slate-400 text-sm">
-            Authority Score
-          </div>
+      <img
+        src="https://images.unsplash.com/photo-1677442136019-21780ecad995"
+        className="rounded-2xl border border-[#eaff00]/30"
+      />
 
-        </div>
+    </section>
+  )
+}
+
+function FeatureSection(){
+
+  const features = [
+    {
+      title:"Authority Score",
+      text:"Measure how authoritative your website appears to AI engines"
+    },
+    {
+      title:"AIO Optimization",
+      text:"Understand if your site is optimized for AI generated answers"
+    },
+    {
+      title:"Entity Signals",
+      text:"See if your brand is recognized as a trusted entity"
+    },
+    {
+      title:"Execution Plan",
+      text:"Get prioritized improvements to boost authority"
+    }
+  ]
+
+  return(
+    <section className="max-w-6xl mx-auto px-6 py-20">
+
+      <h2 className="text-4xl font-bold text-center text-[#eaff00] mb-16">
+        What This Tool Measures
+      </h2>
+
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+
+        {features.map(f=>(
+          <Card key={f.title} className="bg-[#111a2b] border border-[#eaff00]/20">
+            <CardContent className="p-8">
+              <h3 className="text-xl font-bold text-white">{f.title}</h3>
+              <p className="text-slate-400 mt-3">{f.text}</p>
+            </CardContent>
+          </Card>
+        ))}
 
       </div>
 
     </section>
-  );
+  )
 }
 
-function ScoreDashboard({ scores }: { scores: Scores }) {
-  const items = [
-    { label: "Authority", value: scores.authority },
-    { label: "AIO", value: scores.aio },
-    { label: "GEO", value: scores.geo },
-    { label: "AEO", value: scores.aeo },
-  ];
+function UseCaseSection(){
 
-  return (
-    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-      {items.map((s) => (
-        <Gauge key={s.label} label={s.label} value={s.value} />
-      ))}
-    </div>
-  );
+  const cases = [
+    {
+      title:"SEO Agencies",
+      text:"Show clients exactly why their site isn't appearing in AI answers"
+    },
+    {
+      title:"SaaS Companies",
+      text:"Ensure AI search engines cite your product"
+    },
+    {
+      title:"Local Businesses",
+      text:"Increase visibility in AI powered search results"
+    }
+  ]
+
+  return(
+    <section className="max-w-6xl mx-auto px-6 py-20">
+
+      <h2 className="text-4xl font-bold text-[#eaff00] text-center mb-16">
+        Who This Is For
+      </h2>
+
+      <div className="grid md:grid-cols-3 gap-10">
+
+        {cases.map(c=>(
+          <Card key={c.title} className="bg-[#111a2b] border border-[#eaff00]/20">
+            <CardContent className="p-8">
+              <h3 className="text-xl font-bold text-white">{c.title}</h3>
+              <p className="text-slate-400 mt-3">{c.text}</p>
+            </CardContent>
+          </Card>
+        ))}
+
+      </div>
+
+    </section>
+  )
 }
 
-function Gauge({ label, value }: { label: string; value: number }) {
-  const safe = clamp(value);
-  const tier = tierForScore(safe);
-  const styles = tierStyles(tier);
+function Scanner({url,setUrl,runScan,loading,error}:any){
 
-  return (
-    <Card className="bg-[#111a2b] border border-[#eaff00]/20">
+  return(
+    <section className="max-w-6xl mx-auto px-6 py-20">
 
-      <CardContent className="p-8 flex flex-col items-center gap-4">
+      <Card className="bg-[#111a2b]/80 border border-[#eaff00]/30 p-10">
 
-        <div className={`text-4xl font-bold ${styles.text}`}>
-          {safe}
-        </div>
+        <CardContent className="space-y-6">
 
-        <div className="text-sm text-slate-300">
-          {label}
-        </div>
+          <h2 className="text-3xl font-bold text-[#eaff00]">
+            Run Authority Scan
+          </h2>
 
-      </CardContent>
+          <div className="flex gap-4">
 
-    </Card>
-  );
+            <Input
+              placeholder="Enter website URL"
+              value={url}
+              onChange={(e)=>setUrl(e.target.value)}
+            />
+
+            <Button onClick={runScan}>
+              {loading ? "Scanning..." : "Scan"}
+            </Button>
+
+          </div>
+
+          {error && <p className="text-red-400">{error}</p>}
+
+        </CardContent>
+
+      </Card>
+
+    </section>
+  )
 }
 
-function RecommendationsPanel({ items }: any) {
+function Results({scores,recommendations}:any){
 
-  const rows = useMemo(() => {
-    return items.map((title: string) => ({
-      id: idForTitle(title),
-      title,
-      impact: Math.floor(Math.random() * 20) + 5,
-    }));
-  }, [items]);
+  return(
+    <section className="max-w-6xl mx-auto px-6 pb-40 space-y-12">
 
-  return (
-    <div className="space-y-6">
+      <h2 className="text-3xl font-bold text-[#eaff00]">
+        Results
+      </h2>
 
-      <h3 className="text-3xl font-bold text-[#eaff00]">
-        Execution Plan
-      </h3>
+      <div className="grid grid-cols-4 gap-6">
 
-      {rows.map((r: any) => (
-        <Card key={r.id} className="bg-[#111a2b] border border-[#eaff00]/20">
+        {Object.entries(scores).map(([k,v]:any)=>(
+          <Card key={k} className="bg-[#111a2b] border border-[#eaff00]/20">
+            <CardContent className="p-8 text-center">
+              <div className="text-3xl font-bold text-white">{v}</div>
+              <div className="text-slate-400">{k}</div>
+            </CardContent>
+          </Card>
+        ))}
 
-          <CardContent className="p-6">
+      </div>
 
-            <h4 className="text-white font-semibold">
-              {r.title}
-            </h4>
+      <div className="space-y-4">
 
-          </CardContent>
+        {recommendations.map((r:string)=>(
+          <Card key={r} className="bg-[#111a2b] border border-[#eaff00]/20">
+            <CardContent className="p-6">{r}</CardContent>
+          </Card>
+        ))}
 
-        </Card>
-      ))}
+      </div>
 
-    </div>
-  );
+    </section>
+  )
 }
