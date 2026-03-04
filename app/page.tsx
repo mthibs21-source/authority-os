@@ -86,9 +86,10 @@ export default function AuthorityOS() {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+
+        // IMPORTANT: Only send URL so backend keeps working
         body: JSON.stringify({
-          url: normalizedUrl,
-          competitor: normalizeInputUrl(competitor),
+          url: normalizedUrl
         }),
       });
 
@@ -100,7 +101,7 @@ export default function AuthorityOS() {
       setRecommendations(data.recommendations || []);
       setScanned(true);
     } catch (err: any) {
-      setError(err?.message || "Unable to analyze this website.");
+      setError(err?.message || "Failed to scan");
     } finally {
       setLoading(false);
     }
@@ -108,11 +109,13 @@ export default function AuthorityOS() {
 
   return (
     <div className="min-h-screen bg-[#070d18] text-white overflow-hidden relative">
+
       <Hero />
 
       <section className="max-w-6xl mx-auto px-6 py-20">
         <Card className="bg-[#111a2b]/80 backdrop-blur border border-[#eaff00]/30 p-10">
           <CardContent className="space-y-6">
+
             <h2 className="text-3xl font-bold text-[#eaff00]">
               Run Real-Time Authority Scan
             </h2>
@@ -140,9 +143,11 @@ export default function AuthorityOS() {
               >
                 {loading ? "Analyzing..." : "Scan Website"}
               </Button>
+
             </div>
 
             {error && <p className="text-red-400">{error}</p>}
+
           </CardContent>
         </Card>
       </section>
@@ -179,6 +184,7 @@ function Hero() {
 
   return (
     <section className="relative max-w-6xl mx-auto px-6 pt-28 pb-24 grid lg:grid-cols-2 gap-16 items-center">
+
       <div>
         <h1 className="text-6xl font-extrabold leading-tight">
           Become the <span className="text-[#eaff00]">Authority</span> AI Engines Cite
@@ -191,9 +197,18 @@ function Hero() {
       </div>
 
       <div className="flex justify-center">
+
         <div className="relative">
+
           <svg width="220" height="220" className="-rotate-90">
-            <circle cx="110" cy="110" r={radius} stroke="#1e293b" strokeWidth="16" fill="transparent" />
+            <circle
+              cx="110"
+              cy="110"
+              r={radius}
+              stroke="#1e293b"
+              strokeWidth="16"
+              fill="transparent"
+            />
 
             <motion.circle
               cx="110"
@@ -206,16 +221,25 @@ function Hero() {
               strokeDashoffset={offset}
               strokeLinecap="round"
             />
+
           </svg>
 
           <div className="absolute inset-0 flex flex-col items-center justify-center">
+
             <div className={`text-5xl font-extrabold ${styles.textClass}`}>
               {score}
             </div>
-            <div className="text-slate-400 text-sm">Live Authority Preview</div>
+
+            <div className="text-slate-400 text-sm">
+              Live Authority Preview
+            </div>
+
           </div>
+
         </div>
+
       </div>
+
     </section>
   );
 }
@@ -244,15 +268,25 @@ function Gauge({ label, value }: { label: string; value: number }) {
 
   return (
     <Card className="bg-[#111a2b] border border-[#eaff00]/20">
+
       <CardContent className="p-8 flex flex-col items-center gap-4">
-        <div className={`text-4xl font-bold ${styles.textClass}`}>{safe}</div>
-        <div className="text-sm text-slate-300">{label}</div>
+
+        <div className={`text-4xl font-bold ${styles.textClass}`}>
+          {safe}
+        </div>
+
+        <div className="text-sm text-slate-300">
+          {label}
+        </div>
+
       </CardContent>
+
     </Card>
   );
 }
 
 function RecommendationsPanel({ items }: any) {
+
   const rows = useMemo(() => {
     return items.map((title: string) => ({
       id: idForTitle(title),
@@ -263,15 +297,25 @@ function RecommendationsPanel({ items }: any) {
 
   return (
     <div className="space-y-6">
-      <h3 className="text-3xl font-bold text-[#eaff00]">Execution Plan</h3>
+
+      <h3 className="text-3xl font-bold text-[#eaff00]">
+        Execution Plan
+      </h3>
 
       {rows.map((r: any) => (
         <Card key={r.id} className="bg-[#111a2b] border border-[#eaff00]/20">
+
           <CardContent className="p-6">
-            <h4 className="text-white font-semibold">{r.title}</h4>
+
+            <h4 className="text-white font-semibold">
+              {r.title}
+            </h4>
+
           </CardContent>
+
         </Card>
       ))}
+
     </div>
   );
 }
@@ -279,9 +323,11 @@ function RecommendationsPanel({ items }: any) {
 function StickyCTA() {
   return (
     <div className="fixed bottom-6 inset-x-0 z-50 flex justify-center">
+
       <Button className="bg-[#eaff00] hover:bg-[#d7f000] text-black font-bold px-6 rounded-2xl">
         Run Another Scan
       </Button>
+
     </div>
   );
 }
