@@ -118,17 +118,18 @@ function buildTopicMap(pages:any[]){
 
 function buildContentOpportunities(topicMap:any[]){
 
-  const ideas: string[] = []
+const ideas: string[] = []
 
-  topicMap.forEach(([topic])=>{
+topicMap.forEach(([topic])=>{
 
-    ideas.push(`Complete guide to ${topic}`)
-    ideas.push(`${topic} best practices`)
-    ideas.push(`${topic} for beginners`)
+ideas.push(`Complete guide to ${topic}`)
+ideas.push(`${topic} best practices`)
+ideas.push(`${topic} for beginners`)
 
-  })
+})
 
-  return ideas.slice(0,10)
+return ideas.slice(0,10)
+
 }
 
 export async function POST(req:Request){
