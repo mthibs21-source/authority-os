@@ -1,8 +1,63 @@
 import { NextResponse } from "next/server"
 
-function extract(text: string, regex: RegExp) {
-  const match = text.match(regex)
-  return match ? match.length : 0
+function extract(html: string, regex: RegExp) {
+  const matches = html.match(regex)
+  return matches ? matches.length : 0
+}
+
+function getInternalLinks(html: string, baseUrl: string) {
+
+  const links = new Set<string>()
+
+  const matches = html.match(/href="([^"#]+)"/gi)
+
+  if (!matches) return []
+
+  for (const m of matches) {
+
+    const url = m.replace(/href="/i,"").replace(/"/,"")
+
+    if (url.startsWith("/")) {
+      links.add(baseUrl + url)
+    }
+
+    if (url.startsWith(baseUrl)) {
+      links.add(url)
+    }
+
+  }
+
+  return Array.from(links).slice(0,10)
+}
+
+async function analyzePage(url: string) {
+
+  try {
+
+    const res = await fetch(url,{
+      headers:{
+        "User-Agent":"AuthorityOSBot"
+      }
+    })
+
+    const html = await res.text()
+
+    return {
+      title: extract(html, /<title>/gi),
+      meta: extract(html, /meta name="description"/gi),
+      h1: extract(html, /<h1/gi),
+      h2: extract(html, /<h2/gi),
+      schema: extract(html, /application\/ld\+json/gi),
+      faq: extract(html, /faq/gi),
+      html
+    }
+
+  } catch {
+
+    return null
+
+  }
+
 }
 
 export async function POST(req: Request) {
@@ -11,75 +66,104 @@ export async function POST(req: Request) {
 
     const { url } = await req.json()
 
-    if (!url) {
-      return NextResponse.json({ error: "Missing URL" }, { status: 400 })
+    if(!url){
+      return NextResponse.json(
+        { error:"Missing URL" },
+        { status:400 }
+      )
     }
 
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; AuthorityOSBot/1.0)"
-      }
-    })
+    const base = new URL(url).origin
 
-    const html = await response.text()
+    const homepage = await analyzePage(url)
 
-    const title = extract(html, /<title>/gi)
-    const h1 = extract(html, /<h1/gi)
-    const h2 = extract(html, /<h2/gi)
-    const schema = extract(html, /application\/ld\+json/gi)
-    const meta = extract(html, /meta name="description"/gi)
-    const faq = extract(html, /faq/gi)
+    if(!homepage){
+      throw new Error("Could not fetch site")
+    }
+
+    const links = getInternalLinks(homepage.html,base)
+
+    const pages = [homepage]
+
+    for(const link of links){
+
+      const data = await analyzePage(link)
+
+      if(data) pages.push(data)
+
+    }
 
     let authority = 40
     let aio = 40
     let geo = 40
     let aeo = 40
 
-    if (title) authority += 5
-    if (meta) authority += 5
-    if (h1) authority += 5
-    if (h2 > 2) authority += 10
-    if (schema) aio += 15
-    if (faq) aeo += 10
+    let totalH2 = 0
+    let totalSchema = 0
+    let totalFaq = 0
 
-    authority = Math.min(100, authority)
-    aio = Math.min(100, aio)
-    geo = Math.min(100, geo + h2 * 2)
-    aeo = Math.min(100, aeo)
+    pages.forEach(p => {
 
-    const recommendations: string[] = []
+      if(p.title) authority += 2
+      if(p.meta) authority += 2
+      if(p.h1) authority += 2
 
-    if (!schema)
+      totalH2 += p.h2
+      totalSchema += p.schema
+      totalFaq += p.faq
+
+    })
+
+    authority += Math.min(20,totalH2)
+
+    aio += Math.min(20,totalSchema * 5)
+
+    geo += Math.min(20,totalH2)
+
+    aeo += Math.min(20,totalFaq * 5)
+
+    authority = Math.min(100,authority)
+    aio = Math.min(100,aio)
+    geo = Math.min(100,geo)
+    aeo = Math.min(100,aeo)
+
+    const recommendations:string[] = []
+
+    if(totalSchema === 0){
       recommendations.push("Add structured data schema markup")
+    }
 
-    if (h1 === 0)
-      recommendations.push("Add a clear H1 heading to your page")
+    if(totalH2 < 10){
+      recommendations.push("Increase content depth with more sections")
+    }
 
-    if (h2 < 3)
-      recommendations.push("Increase content structure with H2 sections")
+    if(totalFaq === 0){
+      recommendations.push("Add FAQ sections for AI answer engines")
+    }
 
-    if (!meta)
-      recommendations.push("Add a meta description for better SEO signals")
-
-    if (!faq)
-      recommendations.push("Add an FAQ section for AI search visibility")
+    recommendations.push("Expand topical authority across related pages")
+    recommendations.push("Improve internal linking between pages")
 
     return NextResponse.json({
-      scores: {
+
+      pagesScanned: pages.length,
+
+      scores:{
         authority,
         aio,
         geo,
         aeo
       },
+
       recommendations
+
     })
 
-  } catch (error) {
+  } catch(error){
 
     return NextResponse.json(
-      { error: "Scan failed" },
-      { status: 500 }
+      { error:"Scan failed" },
+      { status:500 }
     )
 
   }
