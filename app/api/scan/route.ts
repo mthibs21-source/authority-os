@@ -7,7 +7,7 @@ function normalize(url:string){
 }
 
 /* ===============================
-   TEXT + ENTITY EXTRACTION
+   TEXT + TOPIC EXTRACTION
 ================================*/
 
 function extractTopic(text:string){
@@ -141,18 +141,19 @@ async function crawl(url:string,depth:number){
 
       const schemaTypes = detectSchema(html)
 
-      const score = scorePage(html,text)
-
       const issues = pageIssues(html,text)
 
+      const score = scorePage(html,text)
+
       pages.push({
-        url:current,
-        title:$("title").text(),
+        url: current,
+        title: $("title").text(),
         score,
         topics,
         entities,
         schemaTypes,
-        issues
+        issues,
+        recommendations: issues.map(i => `Fix: ${i}`)
       })
 
       $("a").each((_,el)=>{
@@ -163,6 +164,10 @@ async function crawl(url:string,depth:number){
 
         if(href.startsWith("/")){
           queue.push(new URL(href,url).href)
+        }
+
+        if(href.startsWith(url)){
+          queue.push(href)
         }
 
       })
