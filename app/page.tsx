@@ -18,6 +18,7 @@ type Scores = {
 
 type ScanResponse = {
   scores: Scores;
+  previewImage?: string;
   recommendations?: any[];
   reasons?: Partial<Record<keyof Scores, string[]>>;
   entities?: string[];
@@ -127,29 +128,35 @@ function safeArray<T>(v: any): T[] {
   return Array.isArray(v) ? v : [];
 }
 
-function buildPreviewCandidates(url: string) {
+function buildPreviewCandidates(url: string, previewImage?: string) {
   const u = stripTrailingSlash(normalizeInputUrl(url));
   const encoded = encodeURIComponent(u);
 
-  return [
-    // Thum (works often, but can fail on prod sometimes)
+  const candidates = [
+    // WordPress mShots is slower but reliable
+    `https://s.wordpress.com/mshots/v1/${encoded}?w=1400`,
+
+    // Thum can work but can also block in prod
     `https://image.thum.io/get/width/1400/${u}`,
     `https://image.thum.io/get/width/1400/noanimate/${u}`,
 
-    // WordPress mShots fallback (slow but reliable)
-    `https://s.wordpress.com/mshots/v1/${encoded}?w=1400`,
-
-    // Another thum pattern using encoded URL (sometimes helps)
+    // Encoded variant
     `https://image.thum.io/get/width/1400/${encoded}`,
   ];
+
+  if (previewImage) return [previewImage, ...candidates];
+  return candidates;
 }
 
 function normalizeRecommendation(item: any) {
-  // If API returns strings, we transform into richer cards.
   if (typeof item === "string") {
     const t = item.toLowerCase();
     const severity: Tier =
-      t.includes("critical") || t.includes("missing") || t.includes("error") ? "Critical" : t.includes("improve") || t.includes("add") ? "Needs Work" : "Needs Work";
+      t.includes("critical") || t.includes("missing") || t.includes("error")
+        ? "Critical"
+        : t.includes("improve") || t.includes("add")
+        ? "Needs Work"
+        : "Needs Work";
 
     const why =
       t.includes("schema")
@@ -182,7 +189,6 @@ function normalizeRecommendation(item: any) {
     };
   }
 
-  // If API already returns objects, keep what it has.
   const severity: Tier = item?.severity || item?.tier || "Needs Work";
   return {
     title: item?.title || item?.name || "Recommendation",
@@ -191,6 +197,12 @@ function normalizeRecommendation(item: any) {
     how: item?.how || item?.fix || "Apply the suggested change.",
     impact: typeof item?.impact === "number" ? item.impact : severity === "Critical" ? 9 : 6,
   };
+}
+
+function depthToNumber(depth: "Light" | "Standard" | "Deep") {
+  if (depth === "Light") return 6;
+  if (depth === "Deep") return 20;
+  return 10;
 }
 
 /* ================= MAIN PAGE ================= */
@@ -223,14 +235,14 @@ export default function AuthorityOS() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: normalizedUrl,
-          competitor: normalizedCompetitor || undefined,
-          depth,
+          competitor: competitor.trim() ? normalizedCompetitor : undefined,
+          depth: depthToNumber(depth), // IMPORTANT: API expects number, not "Standard"
         }),
       });
 
       const json = await res.json();
 
-      if (!json?.scores) {
+      if (!res.ok || !json?.scores) {
         throw new Error(json?.error || "Scan failed");
       }
 
@@ -243,7 +255,10 @@ export default function AuthorityOS() {
     }
   };
 
-  const recs = useMemo(() => safeArray<any>(data?.recommendations).map(normalizeRecommendation), [data?.recommendations]);
+  const recs = useMemo(
+    () => safeArray<any>(data?.recommendations).map(normalizeRecommendation),
+    [data?.recommendations]
+  );
 
   return (
     <div className="min-h-screen bg-[#070d18] text-white overflow-hidden relative">
@@ -342,11 +357,19 @@ export default function AuthorityOS() {
           <ScoreDashboard scores={data.scores} reasons={data.reasons} />
 
           <div className="grid lg:grid-cols-2 gap-8">
-            <WebsitePreview url={normalizedUrl} />
-            <EntitySchemaPanel entities={safeArray<string>(data.entities)} schemaTypes={safeArray<string>(data.schemaTypes)} />
+            <WebsitePreview url={normalizedUrl} previewImage={data.previewImage} />
+            <EntitySchemaPanel
+              entities={safeArray<string>(data.entities)}
+              schemaTypes={safeArray<string>(data.schemaTypes)}
+            />
           </div>
 
-          <CompetitorPanel youUrl={normalizedUrl} competitorUrl={data.competitor?.url} you={data.scores} comp={data.competitor?.scores} />
+          <CompetitorPanel
+            youUrl={normalizedUrl}
+            competitorUrl={data.competitor?.url}
+            you={data.scores}
+            comp={data.competitor?.scores}
+          />
 
           <div className="grid lg:grid-cols-2 gap-8">
             <PageInsightsPanel pages={safeArray<any>(data.pages)} />
@@ -354,10 +377,6 @@ export default function AuthorityOS() {
           </div>
         </section>
       )}
-
-      <footer className="max-w-6xl mx-auto px-6 pb-10 pt-6 text-sm text-slate-500 flex items-center justify-end">
-        Built by Uplift Digital
-      </footer>
     </div>
   );
 }
@@ -368,7 +387,7 @@ function TopNav() {
   return (
     <div className="max-w-6xl mx-auto px-6 pt-8 flex items-center justify-between">
       <div className="text-2xl font-extrabold text-[#eaff00]">AuthorityOS</div>
-      <div className="text-sm text-slate-400">Built by Uplift Digital</div>
+      <div className="text-sm text-slate-400"></div>
     </div>
   );
 }
@@ -433,7 +452,9 @@ function Hero({ onJump }: { onJump: () => void }) {
             transition={{ duration: 0.2 }}
           >
             <div className="text-xs text-slate-400">Example outcome</div>
-            <div className="mt-2 text-white font-semibold">Add Organization schema, tighten internal linking, expand service FAQs.</div>
+            <div className="mt-2 text-white font-semibold">
+              Add Organization schema, tighten internal linking, expand service FAQs.
+            </div>
             <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
               <div className="h-full w-[68%] bg-[#eaff00]" />
             </div>
@@ -494,7 +515,12 @@ function ScoreDashboard({ scores, reasons }: { scores: Scores; reasons?: any }) 
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {items.map((s) => (
-          <ScoreCard key={s.label} label={s.label} value={s.value} reasons={reasons?.[s.label?.toLowerCase?.()] || reasons?.[s.label] || reasons?.[s.label as any]} />
+          <ScoreCard
+            key={s.label}
+            label={s.label}
+            value={s.value}
+            reasons={reasons?.[s.label?.toLowerCase?.()] || reasons?.[s.label] || reasons?.[s.label as any]}
+          />
         ))}
       </div>
     </div>
@@ -547,7 +573,7 @@ function ScoreCard({ label, value, reasons }: { label: string; value: number; re
           <div className="text-xs text-slate-400">What this means</div>
           <div className="mt-1 text-sm text-slate-200">{defaultHint}</div>
 
-          {(reasonList.length > 0) && (
+          {reasonList.length > 0 && (
             <ul className="mt-3 space-y-2 text-sm text-slate-300">
               {reasonList.slice(0, 3).map((r, i) => (
                 <li key={i} className="flex items-start gap-2">
@@ -569,15 +595,15 @@ function ScoreCard({ label, value, reasons }: { label: string; value: number; re
 
 /* ================= WEBSITE PREVIEW ================= */
 
-function WebsitePreview({ url }: { url: string }) {
-  const candidates = useMemo(() => buildPreviewCandidates(url), [url]);
+function WebsitePreview({ url, previewImage }: { url: string; previewImage?: string }) {
+  const candidates = useMemo(() => buildPreviewCandidates(url, previewImage), [url, previewImage]);
   const [srcIndex, setSrcIndex] = useState(0);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setSrcIndex(0);
     setFailed(false);
-  }, [url]);
+  }, [url, previewImage]);
 
   const src = candidates[srcIndex];
 
@@ -586,7 +612,12 @@ function WebsitePreview({ url }: { url: string }) {
       <CardContent className="p-7 space-y-4">
         <div className="flex items-center justify-between">
           <div className="text-xl font-bold text-white">Website Preview</div>
-          <a href={url} target="_blank" rel="noreferrer" className="text-xs text-slate-300 hover:text-white transition underline underline-offset-4">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-slate-300 hover:text-white transition underline underline-offset-4"
+          >
             Open site
           </a>
         </div>
@@ -653,14 +684,23 @@ function EntitySchemaPanel({ entities, schemaTypes }: { entities: string[]; sche
           <div className="rounded-2xl border border-white/10 bg-[#070d18]/35 p-5">
             <div className="flex items-center justify-between">
               <div className="text-white font-semibold">Entities detected</div>
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${hasEntities ? "text-green-300 border-green-500/30 bg-green-500/10" : "text-red-300 border-red-500/30 bg-red-500/10"}`}>
+              <span
+                className={`text-xs px-2.5 py-1 rounded-full border ${
+                  hasEntities
+                    ? "text-green-300 border-green-500/30 bg-green-500/10"
+                    : "text-red-300 border-red-500/30 bg-red-500/10"
+                }`}
+              >
                 {hasEntities ? "Found" : "Missing"}
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {hasEntities ? (
                 entities.slice(0, 10).map((e) => (
-                  <span key={e} className="text-xs px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-slate-200">
+                  <span
+                    key={e}
+                    className="text-xs px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-slate-200"
+                  >
                     {e}
                   </span>
                 ))
@@ -675,7 +715,13 @@ function EntitySchemaPanel({ entities, schemaTypes }: { entities: string[]; sche
           <div className="rounded-2xl border border-white/10 bg-[#070d18]/35 p-5">
             <div className="flex items-center justify-between">
               <div className="text-white font-semibold">Schema types detected</div>
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${hasSchema ? "text-green-300 border-green-500/30 bg-green-500/10" : "text-red-300 border-red-500/30 bg-red-500/10"}`}>
+              <span
+                className={`text-xs px-2.5 py-1 rounded-full border ${
+                  hasSchema
+                    ? "text-green-300 border-green-500/30 bg-green-500/10"
+                    : "text-red-300 border-red-500/30 bg-red-500/10"
+                }`}
+              >
                 {hasSchema ? "Found" : "Missing"}
               </span>
             </div>
@@ -683,7 +729,10 @@ function EntitySchemaPanel({ entities, schemaTypes }: { entities: string[]; sche
             <div className="mt-3 flex flex-wrap gap-2">
               {hasSchema ? (
                 schemaTypes.slice(0, 12).map((s) => (
-                  <span key={s} className="text-xs px-2.5 py-1 rounded-full border border-[#eaff00]/20 bg-[#eaff00]/10 text-[#eaff00]">
+                  <span
+                    key={s}
+                    className="text-xs px-2.5 py-1 rounded-full border border-[#eaff00]/20 bg-[#eaff00]/10 text-[#eaff00]"
+                  >
                     {s}
                   </span>
                 ))
@@ -717,10 +766,10 @@ function CompetitorPanel({
 
   const deltas = hasComp
     ? {
-        authority: clamp((comp!.authority - you.authority), -100, 100),
-        aio: clamp((comp!.aio - you.aio), -100, 100),
-        geo: clamp((comp!.geo - you.geo), -100, 100),
-        aeo: clamp((comp!.aeo - you.aeo), -100, 100),
+        authority: clamp(comp!.authority - you.authority, -100, 100),
+        aio: clamp(comp!.aio - you.aio, -100, 100),
+        geo: clamp(comp!.geo - you.geo, -100, 100),
+        aeo: clamp(comp!.aeo - you.aeo, -100, 100),
       }
     : null;
 
@@ -730,9 +779,7 @@ function CompetitorPanel({
         <div className="flex items-start justify-between gap-6 flex-col md:flex-row">
           <div>
             <div className="text-xl font-bold text-white">Competitor Comparison</div>
-            <div className="mt-2 text-slate-300 text-sm">
-              Side by side scores, gaps, and where they are winning.
-            </div>
+            <div className="mt-2 text-slate-300 text-sm">Side by side scores, gaps, and where they are winning.</div>
           </div>
           <div className="text-xs text-slate-400">
             You: <span className="text-slate-200">{stripTrailingSlash(youUrl)}</span>
