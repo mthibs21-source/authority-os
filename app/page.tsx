@@ -10,33 +10,31 @@ const [results,setResults] = useState<any>(null)
 
 async function runScan(){
 
+if(!url) return
+
 setLoading(true)
+
+try{
 
 const res = await fetch("/api/scan",{
 method:"POST",
-body:JSON.stringify({url}),
 headers:{
 "Content-Type":"application/json"
-}
+},
+body:JSON.stringify({url})
 })
 
 const data = await res.json()
 
 setResults(data)
 
-setLoading(false)
+}catch(e){
+
+console.error(e)
 
 }
 
-async function checkout(){
-
-const res = await fetch("/api/create-checkout-session",{
-method:"POST"
-})
-
-const data = await res.json()
-
-window.location.href = data.url
+setLoading(false)
 
 }
 
@@ -48,13 +46,12 @@ return (
 
 <div className="max-w-6xl mx-auto flex justify-between items-center py-6 px-6">
 
-<h1 className="text-xl font-semibold">AuthorityOS</h1>
+<h1 className="text-xl font-semibold">
+AuthorityOS
+</h1>
 
-<button
-onClick={checkout}
-className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg"
->
-Start Pro
+<button className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg transition">
+Public Beta
 </button>
 
 </div>
@@ -62,17 +59,17 @@ Start Pro
 
 {/* HERO */}
 
-<section className="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-12 items-center">
+<section className="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-14 items-center">
 
 <div>
 
-<h2 className="text-4xl font-bold leading-tight mb-6">
-Dominate AI Search Rankings
+<h2 className="text-4xl md:text-5xl font-bold leading-tight mb-6">
+Understand Your Authority in AI Search
 </h2>
 
-<p className="text-gray-300 mb-8">
-AuthorityOS scans your website and shows how visible you are inside
-AI search engines like ChatGPT, Gemini and Perplexity.
+<p className="text-gray-300 mb-8 text-lg">
+AuthorityOS analyzes how visible your website is to modern AI search engines like ChatGPT, Gemini and Perplexity.
+Scan your site to understand your AI authority, entity signals and content opportunities.
 </p>
 
 <div className="flex gap-3">
@@ -80,45 +77,50 @@ AI search engines like ChatGPT, Gemini and Perplexity.
 <input
 value={url}
 onChange={e=>setUrl(e.target.value)}
-placeholder="enter website url"
+placeholder="enter your website url"
 className="px-4 py-3 rounded-lg text-black w-full"
 />
 
 <button
 onClick={runScan}
-className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg"
+className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg transition"
 >
-Scan
+{loading ? "Scanning..." : "Run Scan"}
 </button>
 
 </div>
 
 </div>
 
-{/* PRODUCT IMAGE */}
 
-<div className="bg-[#141416] rounded-xl p-6 shadow-lg">
+{/* PRODUCT PREVIEW */}
+
+<div className="bg-[#141416] rounded-xl p-8 shadow-lg border border-[#1e1e21]">
 
 <div className="text-sm text-gray-400 mb-4">
-Authority Scan Preview
+Authority Dashboard Preview
 </div>
 
 <div className="space-y-3">
 
-<div className="bg-[#1e1e21] p-3 rounded">
-AI Authority Score: 74
+<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
+<span>AI Authority</span>
+<span className="font-bold">74</span>
 </div>
 
-<div className="bg-[#1e1e21] p-3 rounded">
-AEO Score: 61
+<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
+<span>AEO Score</span>
+<span className="font-bold">61</span>
 </div>
 
-<div className="bg-[#1e1e21] p-3 rounded">
-GEO Score: 58
+<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
+<span>GEO Score</span>
+<span className="font-bold">58</span>
 </div>
 
-<div className="bg-[#1e1e21] p-3 rounded">
-Entity Authority: 66
+<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
+<span>Entity Authority</span>
+<span className="font-bold">66</span>
 </div>
 
 </div>
@@ -134,14 +136,16 @@ Entity Authority: 66
 
 <section className="max-w-5xl mx-auto px-6 pb-20">
 
-<h3 className="text-2xl mb-6">Scan Results</h3>
+<h3 className="text-2xl mb-8">
+Scan Results
+</h3>
 
 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-{Object.entries(results.scores).map(([k,v])=>(
-<div key={k} className="bg-[#141416] p-6 rounded-xl">
+{Object.entries(results.scores || {}).map(([k,v])=>(
+<div key={k} className="bg-[#141416] p-6 rounded-xl border border-[#1f1f22]">
 
-<div className="text-gray-400 text-sm">
+<div className="text-gray-400 text-sm mb-2 capitalize">
 {k}
 </div>
 
@@ -172,11 +176,12 @@ How AuthorityOS Works
 <div>
 
 <h4 className="text-xl mb-2">
-1. Scan Your Website
+Scan Your Website
 </h4>
 
 <p className="text-gray-400">
-We crawl your pages and analyze content authority signals.
+AuthorityOS crawls your pages and analyzes entity signals,
+content depth and topical authority.
 </p>
 
 </div>
@@ -184,11 +189,11 @@ We crawl your pages and analyze content authority signals.
 <div>
 
 <h4 className="text-xl mb-2">
-2. Measure AI Visibility
+Measure AI Visibility
 </h4>
 
 <p className="text-gray-400">
-See how well your site performs inside AI search engines.
+Understand how well your website appears inside AI generated answers and knowledge graphs.
 </p>
 
 </div>
@@ -196,11 +201,11 @@ See how well your site performs inside AI search engines.
 <div>
 
 <h4 className="text-xl mb-2">
-3. Get Growth Opportunities
+Find Growth Opportunities
 </h4>
 
 <p className="text-gray-400">
-Identify topics and authority gaps competitors dominate.
+Identify authority gaps, missing topics and content clusters that competitors dominate.
 </p>
 
 </div>
@@ -217,43 +222,43 @@ Identify topics and authority gaps competitors dominate.
 <div className="max-w-6xl mx-auto px-6">
 
 <h3 className="text-3xl font-bold mb-12 text-center">
-Who This Is For
+Who Uses AuthorityOS
 </h3>
 
 <div className="grid md:grid-cols-3 gap-10">
 
-<div className="bg-[#18181b] p-6 rounded-xl">
+<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
 
 <h4 className="text-lg mb-2">
 SEO Agencies
 </h4>
 
 <p className="text-gray-400">
-Audit client authority and prove AI visibility growth.
+Audit client authority and show measurable AI search improvements.
 </p>
 
 </div>
 
-<div className="bg-[#18181b] p-6 rounded-xl">
+<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
 
 <h4 className="text-lg mb-2">
 SaaS Founders
 </h4>
 
 <p className="text-gray-400">
-Understand how AI engines interpret your product pages.
+Understand how AI interprets your product pages and category positioning.
 </p>
 
 </div>
 
-<div className="bg-[#18181b] p-6 rounded-xl">
+<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
 
 <h4 className="text-lg mb-2">
 Local Businesses
 </h4>
 
 <p className="text-gray-400">
-Win AI generated local search recommendations.
+Win AI generated recommendations in local search and conversational queries.
 </p>
 
 </div>
@@ -265,29 +270,62 @@ Win AI generated local search recommendations.
 </section>
 
 
-{/* PRICING */}
+{/* FEATURES */}
+
+<section className="max-w-6xl mx-auto px-6 py-20">
+
+<h3 className="text-3xl font-bold mb-12 text-center">
+Platform Features
+</h3>
+
+<div className="grid md:grid-cols-3 gap-10">
+
+<div>
+<h4 className="text-lg mb-2">AI Authority Score</h4>
+<p className="text-gray-400">
+Measures how authoritative your website appears to AI systems.
+</p>
+</div>
+
+<div>
+<h4 className="text-lg mb-2">Topic Gap Analysis</h4>
+<p className="text-gray-400">
+Identify missing topics preventing AI from recommending your site.
+</p>
+</div>
+
+<div>
+<h4 className="text-lg mb-2">Entity Authority Signals</h4>
+<p className="text-gray-400">
+Analyze entity relationships and structured knowledge signals.
+</p>
+</div>
+
+</div>
+
+</section>
+
+
+{/* FUTURE PRICING */}
 
 <section className="max-w-5xl mx-auto px-6 py-24 text-center">
 
 <h3 className="text-3xl font-bold mb-6">
-Simple Pricing
+AuthorityOS Pro
 </h3>
 
 <p className="text-gray-400 mb-10">
-Start optimizing your AI search authority today.
+Advanced AI visibility analytics and competitor tracking coming soon.
 </p>
 
-<div className="bg-[#141416] p-10 rounded-xl inline-block">
+<div className="bg-[#141416] p-10 rounded-xl border border-[#222] inline-block">
 
 <div className="text-4xl font-bold mb-4">
-$49/mo
+Launching Soon
 </div>
 
-<button
-onClick={checkout}
-className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg"
->
-Start Subscription
+<button className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg transition">
+Join Early Access
 </button>
 
 </div>
