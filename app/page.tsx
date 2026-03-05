@@ -48,24 +48,26 @@ return (
 
 <div className="min-h-screen bg-[#0b0b0d] text-white">
 
-{/* NAV */}
+{/* NAVBAR */}
 
 <div className="max-w-7xl mx-auto flex justify-between items-center py-6 px-6">
 
-<h1 className="text-xl font-semibold tracking-wide">
+<h1 className="text-xl font-semibold tracking-wide text-[#d4ff00]">
 AuthorityOS
 </h1>
-
-<div className="text-[#d4ff00] font-medium">
-AI Search Authority Scanner
-</div>
 
 </div>
 
 
 {/* HERO */}
 
-<section className="max-w-7xl mx-auto px-6 pt-16 pb-10 text-center">
+<section className="max-w-6xl mx-auto px-6 pt-12 pb-10 text-center">
+
+<div className="text-[#d4ff00] font-semibold mb-4 text-lg">
+
+AI Search Authority Scanner
+
+</div>
 
 <h2 className="text-5xl font-bold mb-6">
 
@@ -73,26 +75,92 @@ Will ChatGPT Recommend Your Business?
 
 </h2>
 
-<p className="text-gray-400 text-lg max-w-3xl mx-auto">
+<p className="text-gray-400 text-lg max-w-3xl mx-auto mb-10">
 
-AuthorityOS analyzes how AI search engines interpret your website,
-your entity authority, and whether your competitors are dominating
-AI recommendations.
+AuthorityOS scans your website and determines how visible your business
+is inside AI search engines like ChatGPT, Gemini and Perplexity.
 
 </p>
 
 </section>
 
 
-{/* SCAN CONTROL BAR */}
+{/* PRODUCT PREVIEW IMAGE */}
+
+<section className="max-w-6xl mx-auto px-6 pb-16">
+
+<div className="bg-[#111114] border border-[#1e1e21] rounded-xl p-8 shadow-xl">
+
+<div className="text-sm text-gray-400 mb-6">
+
+Example AI Authority Scan
+
+</div>
+
+<div className="grid md:grid-cols-4 gap-4">
+
+<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
+
+<div className="text-gray-400 mb-2">
+AI Authority
+</div>
+
+<div className="text-3xl font-bold text-[#d4ff00]">
+74
+</div>
+
+</div>
+
+<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
+
+<div className="text-gray-400 mb-2">
+AEO Score
+</div>
+
+<div className="text-3xl font-bold text-[#d4ff00]">
+61
+</div>
+
+</div>
+
+<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
+
+<div className="text-gray-400 mb-2">
+GEO Score
+</div>
+
+<div className="text-3xl font-bold text-[#d4ff00]">
+58
+</div>
+
+</div>
+
+<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
+
+<div className="text-gray-400 mb-2">
+Entity Authority
+</div>
+
+<div className="text-3xl font-bold text-[#d4ff00]">
+66
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+{/* SCAN BAR */}
 
 <section className="max-w-6xl mx-auto px-6 pb-20">
 
 <div className="bg-[#111114] border border-[#1e1e21] rounded-xl p-6 shadow-lg">
 
 <div className="grid md:grid-cols-4 gap-4">
-
-{/* WEBSITE */}
 
 <input
 value={url}
@@ -101,18 +169,12 @@ placeholder="Enter website URL"
 className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
 />
 
-
-{/* COMPETITOR */}
-
 <input
 value={competitor}
 onChange={e=>setCompetitor(e.target.value)}
 placeholder="Competitor (optional)"
 className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
 />
-
-
-{/* SCAN TYPE */}
 
 <select
 value={scanType}
@@ -125,9 +187,6 @@ className="bg-[#1a1a1d] px-4 py-3 rounded-lg border border-[#26262a]"
 <option value="deep">Deep Scan</option>
 
 </select>
-
-
-{/* BUTTON */}
 
 <button
 onClick={runScan}
@@ -149,7 +208,7 @@ className="bg-[#d4ff00] text-black font-semibold rounded-lg py-3 hover:brightnes
 
 {results && (
 
-<section className="max-w-6xl mx-auto px-6 pb-20">
+<section className="max-w-6xl mx-auto px-6 pb-24">
 
 <h3 className="text-2xl mb-8">
 
@@ -184,82 +243,6 @@ Scan Results
 </section>
 
 )}
-
-
-{/* FEATURES */}
-
-<section className="max-w-7xl mx-auto px-6 pb-24">
-
-<h3 className="text-3xl font-bold mb-12 text-center">
-
-Platform Capabilities
-
-</h3>
-
-<div className="grid md:grid-cols-3 gap-10">
-
-<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
-
-<h4 className="text-[#d4ff00] mb-2">
-
-AI Authority Score
-
-</h4>
-
-<p className="text-gray-400">
-
-Measure how much AI engines trust your website.
-
-</p>
-
-</div>
-
-
-<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
-
-<h4 className="text-[#d4ff00] mb-2">
-
-Competitor AI Visibility
-
-</h4>
-
-<p className="text-gray-400">
-
-See if competitors appear in AI answers more often.
-
-</p>
-
-</div>
-
-
-<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
-
-<h4 className="text-[#d4ff00] mb-2">
-
-Schema + Entity Detection
-
-</h4>
-
-<p className="text-gray-400">
-
-Analyze entity recognition and structured data signals.
-
-</p>
-
-</div>
-
-</div>
-
-</section>
-
-
-{/* FOOTER */}
-
-<footer className="text-center text-gray-500 pb-10">
-
-Built by Uplift Digital
-
-</footer>
 
 </div>
 
