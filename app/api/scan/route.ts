@@ -1,216 +1,195 @@
 import { NextResponse } from "next/server"
-import * as cheerio from "cheerio"
 
-function normalize(url:string){
-if(!url.startsWith("http")) return "https://" + url
-return url
+type Scores = {
+  authority:number
+  aio:number
+  geo:number
+  aeo:number
+  citation?:number
 }
 
-function extractTopic(text:string){
-
-const words = text
-.toLowerCase()
-.replace(/[^a-z ]/g,"")
-.split(" ")
-.filter(w => w.length > 4)
-
-const counts:Record<string,number> = {}
-
-words.forEach(w=>{
-counts[w] = (counts[w] || 0) + 1
-})
-
-const sorted =
-Object.entries(counts)
-.sort((a,b)=>b[1]-a[1])
-
-return sorted.slice(0,5).map(x=>x[0])
+function clamp(n:number,min=0,max=100){
+  return Math.max(min,Math.min(max,n))
 }
 
-function scorePage(html:string,text:string){
-
-const wordCount = text.split(" ").length
-
-const headings =
-(html.match(/<h1/g)||[]).length +
-(html.match(/<h2/g)||[]).length
-
-const schema =
-html.includes("application/ld+json")
-
-let score = 0
-
-score += Math.min(wordCount/50,40)
-score += headings * 5
-
-if(schema) score += 15
-
-return Math.min(100,Math.round(score))
+async function fetchHTML(url:string){
+  try{
+    const res = await fetch(url,{headers:{'User-Agent':'AuthorityOS Scanner'}})
+    const html = await res.text()
+    return html
+  }catch{
+    return ""
+  }
 }
 
-async function crawl(url:string,limit:number){
-
-const visited = new Set<string>()
-const queue = [url]
-const pages:any[] = []
-
-while(queue.length && pages.length < limit){
-
-const current = queue.shift()
-
-if(!current || visited.has(current)) continue
-
-visited.add(current)
-
-try{
-
-const res = await fetch(current,{
-headers:{
-"User-Agent":"Mozilla/5.0"
-}
-})
-
-const html = await res.text()
-
-const $ = cheerio.load(html)
-
-const text = $("body").text()
-
-const topics = extractTopic(text)
-
-pages.push({
-url:current,
-score:scorePage(html,text),
-topics
-})
-
-$("a").each((_,el)=>{
-
-const href = $(el).attr("href")
-
-if(!href) return
-
-if(href.startsWith("/")){
-queue.push(new URL(href,url).href)
+function detectSchema(html:string){
+  const matches = [...html.matchAll(/"@type"\s*:\s*"([^"]+)"/g)]
+  const types = matches.map(m=>m[1])
+  return [...new Set(types)]
 }
 
-})
+function detectEntities(html:string){
+  const entities:string[] = []
 
-}catch(err){
+  if(html.includes("Organization")) entities.push("Organization")
+  if(html.includes("LocalBusiness")) entities.push("LocalBusiness")
+  if(html.includes("Product")) entities.push("Product")
+  if(html.includes("Service")) entities.push("Service")
 
-pages.push({
-url:current,
-score:0,
-topics:[],
-error:true
-})
+  if(html.match(/©|Copyright/i)) entities.push("Brand")
 
+  return [...new Set(entities)]
 }
 
+function detectRecommendations(schema:string[],entities:string[]){
+  const recs:any[] = []
+
+  if(schema.length===0){
+    recs.push({
+      title:"Add Organization Schema",
+      severity:"Critical",
+      why:"Helps AI and search engines understand your brand entity",
+      how:"Add JSON-LD Organization schema to your homepage",
+      impact:9
+    })
+  }
+
+  if(!entities.includes("Brand")){
+    recs.push({
+      title:"Strengthen brand entity signals",
+      severity:"Needs Work",
+      why:"AI engines rely on clear entity signals",
+      how:"Add consistent brand references, about page and schema",
+      impact:7
+    })
+  }
+
+  recs.push({
+    title:"Expand FAQ sections",
+    severity:"Needs Work",
+    why:"AI systems extract answers from structured FAQ content",
+    how:"Add 5-8 FAQs per service page",
+    impact:6
+  })
+
+  return recs
 }
 
-return pages
+function calculateScores(schema:string[],entities:string[]):Scores{
+
+  const schemaScore = clamp(schema.length*15)
+  const entityScore = clamp(entities.length*20)
+
+  const authority = clamp((schemaScore+entityScore)/2 + Math.random()*20)
+  const aio = clamp(entityScore + Math.random()*10)
+  const geo = clamp(schemaScore + Math.random()*10)
+  const aeo = clamp((schemaScore+entityScore)/2 + Math.random()*15)
+
+  return {
+    authority:Math.floor(authority),
+    aio:Math.floor(aio),
+    geo:Math.floor(geo),
+    aeo:Math.floor(aeo)
+  }
 }
 
-function buildTopicMap(pages:any[]){
-
-const map:Record<string,number> = {}
-
-pages.forEach(p=>{
-
-p.topics.forEach((t:string)=>{
-map[t] = (map[t]||0)+1
-})
-
-})
-
-return Object.entries(map)
-.sort((a,b)=>b[1]-a[1])
-.slice(0,10)
-}
-
-function buildContentIdeas(topicMap:any[]){
-
-const ideas:string[] = []
-
-topicMap.forEach(([topic])=>{
-
-ideas.push(`Complete guide to ${topic}`)
-ideas.push(`${topic} best practices`)
-ideas.push(`${topic} for beginners`)
-
-})
-
-return ideas.slice(0,10)
+function buildReasons(schema:string[],entities:string[]){
+  return{
+    authority:[
+      schema.length? "Schema present improves trust signals":"Missing schema reduces entity trust",
+      entities.length? "Entities detected on site":"Weak entity signals detected"
+    ],
+    aio:[
+      "Content structure affects AI readability",
+      "Answer style formatting improves reuse"
+    ],
+    geo:[
+      "Internal linking influences topic clusters",
+      "Entity relationships impact topical authority"
+    ],
+    aeo:[
+      "FAQ style answers help AI extract information",
+      "Structured headings improve answer extraction"
+    ]
+  }
 }
 
 export async function POST(req:Request){
 
-try{
+  try{
 
-const body = await req.json()
+    const body = await req.json()
+    const url = body.url
+    const competitor = body.competitor
 
-const url = normalize(body.url)
+    if(!url){
+      return NextResponse.json({error:"Missing URL"},{status:400})
+    }
 
-const competitor = body.competitor
+    const html = await fetchHTML(url)
 
-const pages = await crawl(url,10)
+    const schemaTypes = detectSchema(html)
+    const entities = detectEntities(html)
 
-const avg =
-pages.reduce((a,b)=>a+b.score,0) /
-(pages.length || 1)
+    const scores = calculateScores(schemaTypes,entities)
+    const reasons = buildReasons(schemaTypes,entities)
+    const recommendations = detectRecommendations(schemaTypes,entities)
 
-const scores = {
-authority:Math.round(avg),
-aio:Math.round(avg*0.65),
-geo:Math.round(avg*0.6),
-aeo:Math.round(avg*0.45),
-citation:Math.round(avg*0.55),
-entity:Math.round(avg*0.5)
-}
+    let competitorData:any = null
 
-const topicMap = buildTopicMap(pages)
+    if(competitor){
 
-const opportunities =
-buildContentIdeas(topicMap)
+      const compHTML = await fetchHTML(competitor)
 
-return NextResponse.json({
+      const compSchema = detectSchema(compHTML)
+      const compEntities = detectEntities(compHTML)
 
-success:true,
-scores,
-pages,
-pagesScanned:pages.length,
-topicMap,
-opportunities,
+      competitorData = {
+        url:competitor,
+        scores:calculateScores(compSchema,compEntities),
+        entities:compEntities,
+        schemaTypes:compSchema
+      }
 
-recommendations:[
-"Add FAQ schema",
-"Increase entity mentions",
-"Strengthen internal linking",
-"Add long form topic clusters"
-],
+    }
 
-competitor: competitor
-? {
-url:competitor,
-scores:{
-authority:70,
-aio:65,
-geo:60,
-aeo:55
-}
-}
-: null
+    const previewImage = `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=1200`
 
-})
+    return NextResponse.json({
 
-}catch(err){
+      scores,
 
-return NextResponse.json({
-success:false,
-error:"Scan failed"
-})
+      previewImage,
 
-}
+      recommendations,
+
+      reasons,
+
+      entities,
+
+      schemaTypes,
+
+      pages:[
+        {
+          url,
+          title:"Homepage",
+          issues:[
+            schemaTypes.length?"":"Missing schema markup",
+            entities.length?"":"Weak entity signals"
+          ].filter(Boolean)
+        }
+      ],
+
+      competitor:competitorData
+
+    })
+
+  }catch(e:any){
+
+    return NextResponse.json({
+      error:e?.message || "Scan failed"
+    },{status:500})
+
+  }
 
 }
