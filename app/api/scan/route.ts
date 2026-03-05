@@ -1,20 +1,30 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
+type Scores = {
+  authority:number
+  aio:number
+  geo:number
+  aeo:number
+}
+
 function clamp(n:number,min=0,max=100){
   return Math.max(min,Math.min(max,n))
 }
 
-function roundScore(n:number){
+function score(n:number){
   return Math.round(clamp(n))
 }
 
 async function fetchHTML(url:string){
+
   try{
+
     const res = await fetch(url,{
       headers:{
-        "User-Agent":"Mozilla/5.0 AuthorityOS"
-      }
+        "User-Agent":"Mozilla/5.0 AuthorityOS Scanner"
+      },
+      cache:"no-store"
     })
 
     return await res.text()
@@ -22,6 +32,7 @@ async function fetchHTML(url:string){
   }catch{
     return ""
   }
+
 }
 
 function detectSchema($:cheerio.CheerioAPI){
@@ -53,12 +64,11 @@ function detectSchema($:cheerio.CheerioAPI){
 function detectEntities($:cheerio.CheerioAPI){
 
   const entities:string[]=[]
-
   const text = $("body").text()
 
-  if(text.match(/inc|llc|corporation/i)) entities.push("Organization")
+  if(text.match(/inc|llc|ltd|corporation/i)) entities.push("Organization")
   if(text.match(/product/i)) entities.push("Product")
-  if(text.match(/service/i)) entities.push("Service")
+  if(text.match(/service|solutions/i)) entities.push("Service")
 
   if($("footer").text().match(/©|copyright/i)){
     entities.push("Brand")
@@ -68,21 +78,22 @@ function detectEntities($:cheerio.CheerioAPI){
 
 }
 
+function scoreAuthority(schema:string[],entities:string[]){
+
+  const schemaScore = schema.length * 18
+  const entityScore = entities.length * 22
+
+  return score(schemaScore + entityScore)
+
+}
+
 function scoreAIO($:cheerio.CheerioAPI){
 
   const headings = $("h1,h2,h3").length
   const paragraphs = $("p").length
+  const lists = $("ul,ol").length
 
-  return roundScore((headings + paragraphs/10) * 2)
-
-}
-
-function scoreAEO($:cheerio.CheerioAPI){
-
-  const faq = $('[itemtype*="FAQPage"]').length
-  const questions = $("h2:contains('?'),h3:contains('?')").length
-
-  return roundScore(faq*40 + questions*2)
+  return score(headings*5 + paragraphs*0.4 + lists*3)
 
 }
 
@@ -93,13 +104,58 @@ function scoreGEO($:cheerio.CheerioAPI){
 
   if(links===0) return 0
 
-  return roundScore((internal/links)*100)
+  const ratio = internal / links
+
+  return score(ratio * 100)
 
 }
 
-function scoreAuthority(schema:string[],entities:string[]){
+function scoreAEO($:cheerio.CheerioAPI){
 
-  return roundScore(schema.length*15 + entities.length*20)
+  const faqSchema = $('[itemtype*="FAQPage"]').length
+  const questions = $("h2:contains('?'),h3:contains('?')").length
+
+  return score(faqSchema*40 + questions*3)
+
+}
+
+function buildRecommendations(schema:string[],entities:string[]){
+
+  const recs:any[]=[]
+
+  if(schema.length===0){
+
+    recs.push({
+      title:"Add structured schema markup",
+      severity:"Critical",
+      why:"Schema allows AI and search engines to identify your entity and relationships.",
+      how:"Add Organization, Website and FAQ schema to your site.",
+      impact:9
+    })
+
+  }
+
+  if(!entities.includes("Organization")){
+
+    recs.push({
+      title:"Strengthen organization entity",
+      severity:"Needs Work",
+      why:"AI models rely on strong entity recognition.",
+      how:"Add About page, Organization schema and clear brand references.",
+      impact:7
+    })
+
+  }
+
+  recs.push({
+    title:"Improve internal linking",
+    severity:"Needs Work",
+    why:"Improves topical authority clusters and page discovery.",
+    how:"Add contextual links between related pages.",
+    impact:6
+  })
+
+  return recs
 
 }
 
@@ -112,12 +168,12 @@ async function scanSite(url:string){
   const schemaTypes = detectSchema($)
   const entities = detectEntities($)
 
-  const aio = scoreAIO($)
-  const aeo = scoreAEO($)
-  const geo = scoreGEO($)
   const authority = scoreAuthority(schemaTypes,entities)
+  const aio = scoreAIO($)
+  const geo = scoreGEO($)
+  const aeo = scoreAEO($)
 
-  return{
+  return {
 
     scores:{
       authority,
@@ -126,36 +182,27 @@ async function scanSite(url:string){
       aeo
     },
 
-    entities,
-
     schemaTypes,
+    entities,
 
     pages:[
       {
         url,
         title:$("title").text(),
         issues:[
-          schemaTypes.length?null:"Missing schema markup",
-          entities.length?null:"Weak entity signals"
+          schemaTypes.length ? null : "Missing schema markup",
+          entities.length ? null : "Weak entity signals"
         ].filter(Boolean)
       }
     ],
 
-    recommendations:[
-      {
-        title:"Improve internal linking",
-        severity:"Needs Work",
-        why:"Helps build topical authority clusters",
-        how:"Add contextual links between service pages",
-        impact:6
-      }
-    ]
+    recommendations:buildRecommendations(schemaTypes,entities)
 
   }
 
 }
 
-function buildPreview(url:string){
+function preview(url:string){
 
   const encoded = encodeURIComponent(url)
 
@@ -168,22 +215,26 @@ export async function POST(req:Request){
   const {url,competitor} = await req.json()
 
   if(!url){
-    return NextResponse.json({error:"URL required"},{status:400})
+
+    return NextResponse.json({
+      error:"URL required"
+    },{status:400})
+
   }
 
   const main = await scanSite(url)
 
-  let compData=null
+  let comp=null
 
   if(competitor){
 
-    const comp = await scanSite(competitor)
+    const c = await scanSite(competitor)
 
-    compData={
+    comp={
       url:competitor,
-      scores:comp.scores,
-      entities:comp.entities,
-      schemaTypes:comp.schemaTypes
+      scores:c.scores,
+      entities:c.entities,
+      schemaTypes:c.schemaTypes
     }
 
   }
@@ -192,9 +243,9 @@ export async function POST(req:Request){
 
     ...main,
 
-    previewImage:buildPreview(url),
+    previewImage:preview(url),
 
-    competitor:compData
+    competitor:comp
 
   })
 
