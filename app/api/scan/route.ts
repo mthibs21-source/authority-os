@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
+import * as cheerio from "cheerio"
 
 type Scores = {
   authority:number
   aio:number
   geo:number
   aeo:number
-  citation?:number
 }
 
 function clamp(n:number,min=0,max=100){
@@ -14,182 +14,197 @@ function clamp(n:number,min=0,max=100){
 
 async function fetchHTML(url:string){
   try{
-    const res = await fetch(url,{headers:{'User-Agent':'AuthorityOS Scanner'}})
-    const html = await res.text()
-    return html
+    const res = await fetch(url,{
+      headers:{
+        "User-Agent":"AuthorityOS Bot"
+      }
+    })
+    return await res.text()
   }catch{
     return ""
   }
 }
 
-function detectSchema(html:string){
-  const matches = [...html.matchAll(/"@type"\s*:\s*"([^"]+)"/g)]
-  const types = matches.map(m=>m[1])
+function detectSchema($:cheerio.CheerioAPI){
+  const types:string[]=[]
+
+  $('script[type="application/ld+json"]').each((_,el)=>{
+    try{
+      const json = JSON.parse($(el).html() || "{}")
+
+      if(Array.isArray(json)){
+        json.forEach(j=>{
+          if(j["@type"]) types.push(j["@type"])
+        })
+      }else if(json["@type"]){
+        types.push(json["@type"])
+      }
+
+    }catch{}
+  })
+
   return [...new Set(types)]
 }
 
-function detectEntities(html:string){
-  const entities:string[] = []
+function detectEntities($:cheerio.CheerioAPI){
 
-  if(html.includes("Organization")) entities.push("Organization")
-  if(html.includes("LocalBusiness")) entities.push("LocalBusiness")
-  if(html.includes("Product")) entities.push("Product")
-  if(html.includes("Service")) entities.push("Service")
+  const entities:string[]=[]
 
-  if(html.match(/©|Copyright/i)) entities.push("Brand")
+  const text = $("body").text()
+
+  if(text.match(/Inc|LLC|Ltd|Corporation/i)) entities.push("Organization")
+  if(text.match(/service|solutions|platform/i)) entities.push("Service")
+  if(text.match(/product|pricing/i)) entities.push("Product")
+
+  if($("footer").text().match(/©|copyright/i)){
+    entities.push("Brand")
+  }
 
   return [...new Set(entities)]
 }
 
-function detectRecommendations(schema:string[],entities:string[]){
-  const recs:any[] = []
+function scoreAIO($:cheerio.CheerioAPI){
+
+  const paragraphs = $("p").length
+  const headings = $("h1,h2,h3").length
+
+  const answerBlocks = $("p").filter((_,p)=>{
+    const text = $(p).text()
+    return text.length > 80 && text.length < 400
+  }).length
+
+  return clamp((answerBlocks*2 + headings)/3)
+}
+
+function scoreAEO($:cheerio.CheerioAPI){
+
+  const faq = $('[itemtype*="FAQPage"]').length
+  const questions = $("h2:contains('?'),h3:contains('?')").length
+
+  return clamp((faq*40 + questions*3))
+}
+
+function scoreGEO($:cheerio.CheerioAPI){
+
+  const links = $("a[href]").length
+  const internal = $("a[href^='/'],a[href*='"+$("base").attr("href")+"']").length
+
+  return clamp((internal/links)*100 || 20)
+}
+
+function scoreAuthority(schema:string[],entities:string[]){
+
+  const schemaScore = schema.length * 12
+  const entityScore = entities.length * 18
+
+  return clamp(schemaScore + entityScore)
+}
+
+function buildRecommendations(schema:string[],entities:string[]){
+
+  const recs:any[]=[]
 
   if(schema.length===0){
     recs.push({
-      title:"Add Organization Schema",
+      title:"Add structured schema markup",
       severity:"Critical",
-      why:"Helps AI and search engines understand your brand entity",
-      how:"Add JSON-LD Organization schema to your homepage",
+      why:"Schema helps AI identify entities and relationships",
+      how:"Add Organization, Website and FAQ schema",
       impact:9
     })
   }
 
-  if(!entities.includes("Brand")){
+  if(!entities.includes("Organization")){
     recs.push({
-      title:"Strengthen brand entity signals",
+      title:"Strengthen organization entity",
       severity:"Needs Work",
-      why:"AI engines rely on clear entity signals",
-      how:"Add consistent brand references, about page and schema",
+      why:"AI systems rely on strong brand entities",
+      how:"Add About page and organization schema",
       impact:7
     })
   }
 
   recs.push({
-    title:"Expand FAQ sections",
+    title:"Improve internal linking",
     severity:"Needs Work",
-    why:"AI systems extract answers from structured FAQ content",
-    how:"Add 5-8 FAQs per service page",
+    why:"Helps build topical authority clusters",
+    how:"Add contextual links between service pages",
     impact:6
   })
 
   return recs
 }
 
-function calculateScores(schema:string[],entities:string[]):Scores{
+async function scanSite(url:string){
 
-  const schemaScore = clamp(schema.length*15)
-  const entityScore = clamp(entities.length*20)
+  const html = await fetchHTML(url)
+  const $ = cheerio.load(html)
 
-  const authority = clamp((schemaScore+entityScore)/2 + Math.random()*20)
-  const aio = clamp(entityScore + Math.random()*10)
-  const geo = clamp(schemaScore + Math.random()*10)
-  const aeo = clamp((schemaScore+entityScore)/2 + Math.random()*15)
+  const schemaTypes = detectSchema($)
+  const entities = detectEntities($)
+
+  const aio = scoreAIO($)
+  const aeo = scoreAEO($)
+  const geo = scoreGEO($)
+  const authority = scoreAuthority(schemaTypes,entities)
 
   return {
-    authority:Math.floor(authority),
-    aio:Math.floor(aio),
-    geo:Math.floor(geo),
-    aeo:Math.floor(aeo)
-  }
-}
 
-function buildReasons(schema:string[],entities:string[]){
-  return{
-    authority:[
-      schema.length? "Schema present improves trust signals":"Missing schema reduces entity trust",
-      entities.length? "Entities detected on site":"Weak entity signals detected"
-    ],
-    aio:[
-      "Content structure affects AI readability",
-      "Answer style formatting improves reuse"
-    ],
-    geo:[
-      "Internal linking influences topic clusters",
-      "Entity relationships impact topical authority"
-    ],
-    aeo:[
-      "FAQ style answers help AI extract information",
-      "Structured headings improve answer extraction"
+    scores:{
+      authority,
+      aio,
+      geo,
+      aeo
+    },
+
+    entities,
+    schemaTypes,
+
+    recommendations:buildRecommendations(schemaTypes,entities),
+
+    pages:[
+      {
+        url,
+        title:$("title").text(),
+        issues:[
+          schemaTypes.length?null:"Missing schema markup",
+          entities.length?null:"Weak entity signals"
+        ].filter(Boolean)
+      }
     ]
   }
 }
 
 export async function POST(req:Request){
 
-  try{
+  const {url,competitor}=await req.json()
 
-    const body = await req.json()
-    const url = body.url
-    const competitor = body.competitor
-
-    if(!url){
-      return NextResponse.json({error:"Missing URL"},{status:400})
-    }
-
-    const html = await fetchHTML(url)
-
-    const schemaTypes = detectSchema(html)
-    const entities = detectEntities(html)
-
-    const scores = calculateScores(schemaTypes,entities)
-    const reasons = buildReasons(schemaTypes,entities)
-    const recommendations = detectRecommendations(schemaTypes,entities)
-
-    let competitorData:any = null
-
-    if(competitor){
-
-      const compHTML = await fetchHTML(competitor)
-
-      const compSchema = detectSchema(compHTML)
-      const compEntities = detectEntities(compHTML)
-
-      competitorData = {
-        url:competitor,
-        scores:calculateScores(compSchema,compEntities),
-        entities:compEntities,
-        schemaTypes:compSchema
-      }
-
-    }
-
-    const previewImage = `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=1200`
-
-    return NextResponse.json({
-
-      scores,
-
-      previewImage,
-
-      recommendations,
-
-      reasons,
-
-      entities,
-
-      schemaTypes,
-
-      pages:[
-        {
-          url,
-          title:"Homepage",
-          issues:[
-            schemaTypes.length?"":"Missing schema markup",
-            entities.length?"":"Weak entity signals"
-          ].filter(Boolean)
-        }
-      ],
-
-      competitor:competitorData
-
-    })
-
-  }catch(e:any){
-
-    return NextResponse.json({
-      error:e?.message || "Scan failed"
-    },{status:500})
-
+  if(!url){
+    return NextResponse.json({error:"URL required"},{status:400})
   }
 
+  const main = await scanSite(url)
+
+  let compData=null
+
+  if(competitor){
+    const comp = await scanSite(competitor)
+
+    compData={
+      url:competitor,
+      scores:comp.scores,
+      entities:comp.entities,
+      schemaTypes:comp.schemaTypes
+    }
+  }
+
+  return NextResponse.json({
+
+    ...main,
+
+    previewImage:`https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=1200`,
+
+    competitor:compData
+
+  })
 }
