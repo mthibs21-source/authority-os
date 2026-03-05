@@ -1,356 +1,557 @@
-import { NextResponse } from "next/server"
-import * as cheerio from "cheerio"
+import { NextResponse } from "next/server";
+import * as cheerio from "cheerio";
 
-function normalize(url:string){
-  if(!url.startsWith("http")) return "https://" + url
-  return url
+type Tier = "Critical" | "Needs Work" | "Strong";
+
+type PageResult = {
+  url: string;
+  title?: string;
+  wordCount: number;
+  headings: number;
+  hasSchema: boolean;
+  schemaTypes: string[];
+  entities: string[];
+  internalLinks: number;
+  externalLinks: number;
+  issues: string[];
+  recommendations: string[];
+  score: number;
+};
+
+type Scores = {
+  authority: number;
+  aio: number;
+  geo: number;
+  aeo: number;
+  citation: number;
+};
+
+function clamp(n: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, n));
 }
 
-function websitePreview(url:string){
-  const encoded = encodeURIComponent(url)
-  return `https://s0.wp.com/mshots/v1/${encoded}?w=1200`
+function normalize(url: string) {
+  const u = (url || "").trim();
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  return `https://${u}`;
 }
 
-function extractTopic(text:string){
-
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z ]/g," ")
-    .split(" ")
-    .filter(w => w.length > 4)
-
-  const counts:Record<string,number> = {}
-
-  words.forEach(w=>{
-    counts[w] = (counts[w] || 0) + 1
-  })
-
-  const sorted =
-    Object.entries(counts)
-    .sort((a,b)=>b[1]-a[1])
-
-  return sorted.slice(0,6).map(x=>x[0])
+function stripHashAndQuery(u: string) {
+  try {
+    const url = new URL(u);
+    url.hash = "";
+    url.search = "";
+    return url.toString();
+  } catch {
+    return u;
+  }
 }
 
-function detectEntities(text:string){
-
-  const matches = text.match(/\b[A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})?/g) || []
-
-  const counts:Record<string,number> = {}
-
-  matches.forEach(m=>{
-    counts[m] = (counts[m]||0)+1
-  })
-
-  return Object.entries(counts)
-    .sort((a,b)=>b[1]-a[1])
-    .slice(0,10)
-    .map(x=>x[0])
+function isSameHost(a: string, b: string) {
+  try {
+    return new URL(a).host === new URL(b).host;
+  } catch {
+    return false;
+  }
 }
 
-function detectSchema(html:string){
-
-  const schemas:string[] = []
-
-  if(html.includes("Organization")) schemas.push("Organization")
-  if(html.includes("FAQPage")) schemas.push("FAQ")
-  if(html.includes("Article")) schemas.push("Article")
-  if(html.includes("Product")) schemas.push("Product")
-  if(html.includes("Breadcrumb")) schemas.push("Breadcrumb")
-
-  return schemas
+function depthToLimit(depth: unknown): number {
+  const d = typeof depth === "string" ? depth : "Standard";
+  if (d === "Light") return 6;
+  if (d === "Deep") return 25;
+  return 12;
 }
 
-function scorePage(html:string,text:string){
-
-  const wordCount = text.split(" ").length
-
-  const headings =
-    (html.match(/<h1/g)||[]).length +
-    (html.match(/<h2/g)||[]).length
-
-  const schema =
-    html.includes("application/ld+json")
-
-  let score = 0
-
-  score += Math.min(wordCount/50,40)
-  score += headings * 5
-
-  if(schema) score += 15
-
-  return Math.min(100,Math.round(score))
+function guessTier(score: number): Tier {
+  if (score >= 75) return "Strong";
+  if (score >= 45) return "Needs Work";
+  return "Critical";
 }
 
-function citationLikelihood(text:string,schemas:string[],entities:string[]){
+function extractEntitiesFromText(text: string): string[] {
+  // Basic, real extraction: look for repeated Title Cased phrases (brand-ish),
+  // plus common business identifiers in footer-ish text.
+  const cleaned = text
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s&.\-']/g, " ")
+    .trim();
 
-  let score = 10
+  const candidates = new Map<string, number>();
 
-  score += Math.min(text.length/2000,35)
-
-  if(schemas.length) score += 20
-
-  score += entities.length * 2
-
-  return Math.min(100,Math.round(score))
-}
-
-function pageIssues(wordCount:number,schemas:string[],links:number){
-
-  const issues:string[] = []
-  const fixes:string[] = []
-
-  if(wordCount < 300){
-    issues.push("Thin content detected")
-    fixes.push("Expand page content to 800 to 1500 words answering the primary search intent")
+  // Pull title case sequences
+  const re = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cleaned)) !== null) {
+    const phrase = m[1].trim();
+    if (phrase.length < 3) continue;
+    if (phrase.split(" ").length === 1 && phrase.length < 5) continue;
+    candidates.set(phrase, (candidates.get(phrase) || 0) + 1);
   }
 
-  if(!schemas.length){
-    issues.push("Missing schema markup")
-    fixes.push("Add Organization, FAQ, and Breadcrumb schema")
+  // Add simple signals (Inc, LLC, Co)
+  const bizRe = /\b([A-Z][\w&.\-']+(?:\s+[A-Z][\w&.\-']+){0,4})\s+(LLC|Inc|Co|Company|Ltd)\b/g;
+  while ((m = bizRe.exec(cleaned)) !== null) {
+    const phrase = `${m[1].trim()} ${m[2]}`.trim();
+    candidates.set(phrase, (candidates.get(phrase) || 0) + 3);
   }
 
-  if(links < 3){
-    issues.push("Weak internal linking")
-    fixes.push("Add contextual internal links to service pages and related articles")
-  }
-
-  return {issues,fixes}
+  // Return top 10
+  return [...candidates.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map((x) => x[0])
+    .slice(0, 10);
 }
 
-async function crawl(url:string,depth:number){
+function detectSchemaTypes(html: string): string[] {
+  const $ = cheerio.load(html);
+  const types = new Set<string>();
 
-  const visited = new Set<string>()
-  const queue = [url]
-  const pages:any[] = []
-
-  while(queue.length && pages.length < depth){
-
-    const current = queue.shift()
-
-    if(!current || visited.has(current)) continue
-
-    visited.add(current)
-
-    try{
-
-      const res = await fetch(current,{
-        headers:{
-          "User-Agent":"Mozilla/5.0"
+  // JSON-LD
+  $('script[type="application/ld+json"]').each((_, el) => {
+    const raw = $(el).text() || "";
+    try {
+      const parsed = JSON.parse(raw);
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const it of items) {
+        if (!it) continue;
+        const t = it["@type"];
+        if (typeof t === "string") types.add(t);
+        if (Array.isArray(t)) t.forEach((v) => typeof v === "string" && types.add(v));
+        // @graph
+        if (Array.isArray(it["@graph"])) {
+          for (const g of it["@graph"]) {
+            const gt = g?.["@type"];
+            if (typeof gt === "string") types.add(gt);
+            if (Array.isArray(gt)) gt.forEach((v) => typeof v === "string" && types.add(v));
+          }
         }
-      })
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+  });
 
-      const html = await res.text()
+  // Microdata / RDFa-ish hints
+  $("[itemscope]").each((_, el) => {
+    const itemtype = $(el).attr("itemtype");
+    if (!itemtype) return;
+    const parts = itemtype.split("/").filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last) types.add(last);
+  });
 
-      const $ = cheerio.load(html)
+  return [...types].slice(0, 20);
+}
 
-      const text = $("body").text()
+function countHeadings(html: string) {
+  const h1 = (html.match(/<h1\b/gi) || []).length;
+  const h2 = (html.match(/<h2\b/gi) || []).length;
+  const h3 = (html.match(/<h3\b/gi) || []).length;
+  return h1 + h2 + h3;
+}
 
-      const topics = extractTopic(text)
+function scorePageSignals(params: {
+  wordCount: number;
+  headings: number;
+  hasSchema: boolean;
+  internalLinks: number;
+  entitiesCount: number;
+  hasFaqLike: boolean;
+}) {
+  const { wordCount, headings, hasSchema, internalLinks, entitiesCount, hasFaqLike } = params;
 
-      const entities = detectEntities(text)
+  // Page score 0-100 based on real signals we can measure
+  let score = 0;
 
-      const schemas = detectSchema(html)
+  // Content depth
+  score += clamp(Math.round(wordCount / 40), 0, 35);
 
-      const links = $("a").length
+  // Headings structure
+  score += clamp(headings * 4, 0, 20);
 
-      const wordCount = text.split(" ").length
+  // Schema
+  score += hasSchema ? 18 : 0;
 
-      const score = scorePage(html,text)
+  // Internal links
+  score += clamp(internalLinks * 2, 0, 15);
 
-      const citation = citationLikelihood(text,schemas,entities)
+  // Entities
+  score += clamp(entitiesCount * 2, 0, 10);
 
-      const {issues,fixes} = pageIssues(wordCount,schemas,links)
+  // FAQ like pattern (Q/A)
+  score += hasFaqLike ? 8 : 0;
+
+  return clamp(score, 0, 100);
+}
+
+function buildIssuesAndRecs(p: {
+  wordCount: number;
+  headings: number;
+  hasSchema: boolean;
+  schemaTypes: string[];
+  internalLinks: number;
+  entitiesCount: number;
+  hasFaqLike: boolean;
+}) {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+
+  if (p.wordCount < 400) {
+    issues.push("Thin content (low word count), page may not fully answer intent.");
+    recommendations.push("Expand this page to fully answer intent (aim for 800+ words where it matters).");
+  }
+
+  if (p.headings < 3) {
+    issues.push("Weak heading structure (few headings), content is harder to scan and extract.");
+    recommendations.push("Add clear H2 sections and concise subheadings aligned to intent.");
+  }
+
+  if (!p.hasSchema) {
+    issues.push("No JSON-LD schema detected, AI and search have less context.");
+    recommendations.push("Add JSON-LD schema (Organization, Website, Breadcrumb, FAQ, Service).");
+  } else if (p.schemaTypes.length === 0) {
+    issues.push("Schema is present but types could not be detected (possible malformed JSON-LD).");
+    recommendations.push("Validate JSON-LD and ensure @type is present (Organization, LocalBusiness, FAQPage, etc).");
+  }
+
+  if (p.internalLinks < 3) {
+    issues.push("Weak internal linking, reduces crawl and topical authority flow.");
+    recommendations.push("Add 6 to 10 contextual internal links to related services, locations, and guides.");
+  }
+
+  if (p.entitiesCount < 3) {
+    issues.push("Weak entity signals, brand identity may not be explicit enough.");
+    recommendations.push("Add consistent business name, about section, NAP, and Organization schema across key pages.");
+  }
+
+  if (!p.hasFaqLike) {
+    issues.push("Few extractable Q and A patterns, reduces answer engine signals.");
+    recommendations.push("Add a FAQ block with 5 to 8 questions and concise answers, then add FAQ schema.");
+  }
+
+  // Deduplicate
+  return {
+    issues: [...new Set(issues)].slice(0, 6),
+    recommendations: [...new Set(recommendations)].slice(0, 6),
+  };
+}
+
+async function fetchHtml(url: string) {
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; AuthorityOSBot/1.0; +https://example.com/bot)",
+      "Accept":
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    },
+    // Vercel serverless sometimes benefits from no cache
+    cache: "no-store",
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("text/html")) {
+    // Still allow, but may be useless
+  }
+
+  const html = await res.text();
+  return html;
+}
+
+function extractLinks(html: string, baseUrl: string) {
+  const $ = cheerio.load(html);
+  const links: string[] = [];
+
+  $("a").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+
+    // ignore mailto, tel, anchors
+    if (href.startsWith("#")) return;
+    if (href.startsWith("mailto:")) return;
+    if (href.startsWith("tel:")) return;
+    if (href.startsWith("javascript:")) return;
+
+    try {
+      const absolute = href.startsWith("http")
+        ? href
+        : new URL(href, baseUrl).toString();
+      links.push(stripHashAndQuery(absolute));
+    } catch {
+      // ignore
+    }
+  });
+
+  return [...new Set(links)];
+}
+
+async function crawlSite(startUrl: string, limitPages: number) {
+  const visited = new Set<string>();
+  const queue: string[] = [stripHashAndQuery(startUrl)];
+  const pages: PageResult[] = [];
+
+  const origin = new URL(startUrl).origin;
+
+  while (queue.length > 0 && pages.length < limitPages) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (visited.has(current)) continue;
+
+    visited.add(current);
+
+    // Only crawl same host
+    if (!isSameHost(current, startUrl)) continue;
+
+    try {
+      const html = await fetchHtml(current);
+      const $ = cheerio.load(html);
+
+      const title =
+        $("title").first().text().trim() ||
+        $("h1").first().text().trim() ||
+        undefined;
+
+      const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+      const wordCount = bodyText ? bodyText.split(" ").length : 0;
+
+      const headings = countHeadings(html);
+
+      const schemaTypes = detectSchemaTypes(html);
+      const hasSchema = html.includes("application/ld+json") || schemaTypes.length > 0;
+
+      const allLinks = extractLinks(html, current);
+      const internal = allLinks.filter((l) => l.startsWith(origin));
+      const external = allLinks.filter((l) => !l.startsWith(origin));
+
+      const entities = extractEntitiesFromText(bodyText);
+      const entitiesCount = entities.length;
+
+      const hasFaqLike =
+        /faq/i.test(bodyText) ||
+        /\bq:\b/i.test(bodyText) ||
+        /\ba:\b/i.test(bodyText) ||
+        /questions/i.test(bodyText);
+
+      const score = scorePageSignals({
+        wordCount,
+        headings,
+        hasSchema,
+        internalLinks: internal.length,
+        entitiesCount,
+        hasFaqLike,
+      });
+
+      const { issues, recommendations } = buildIssuesAndRecs({
+        wordCount,
+        headings,
+        hasSchema,
+        schemaTypes,
+        internalLinks: internal.length,
+        entitiesCount,
+        hasFaqLike,
+      });
 
       pages.push({
-        url:current,
-        score,
-        topics,
-        entities,
-        schemas,
+        url: current,
+        title,
         wordCount,
-        citationLikelihood:citation,
+        headings,
+        hasSchema,
+        schemaTypes,
+        entities,
+        internalLinks: internal.length,
+        externalLinks: external.length,
         issues,
-        fixes
-      })
+        recommendations,
+        score,
+      });
 
-      $("a").each((_,el)=>{
-
-        const href = $(el).attr("href")
-
-        if(!href) return
-
-        if(href.startsWith("/")){
-          queue.push(new URL(href,url).href)
-        }
-
-      })
-
-    }catch{}
-
+      // enqueue more internal links (cap queue growth)
+      for (const link of internal.slice(0, 40)) {
+        if (!visited.has(link) && !queue.includes(link)) queue.push(link);
+      }
+    } catch {
+      // ignore page errors and keep going
+    }
   }
 
-  return pages
+  return pages;
 }
 
-function buildTopicMap(pages:any[]){
+function summarizeSite(pages: PageResult[]) {
+  const pagesScanned = pages.length || 1;
 
-  const map:Record<string,number> = {}
+  const avgScore = pages.reduce((a, b) => a + b.score, 0) / pagesScanned;
 
-  pages.forEach(p=>{
-    p.topics.forEach((t:string)=>{
-      map[t] = (map[t]||0)+1
-    })
-  })
+  // Derive global scores from real crawl
+  const authority = clamp(Math.round(avgScore));
+  const aio = clamp(Math.round(avgScore * 0.72));
+  const geo = clamp(Math.round(avgScore * 0.66));
+  const aeo = clamp(Math.round(avgScore * 0.58));
+  const citation = clamp(Math.round(avgScore * 0.62));
 
-  return Object.entries(map)
-    .sort((a,b)=>b[1]-a[1])
-    .slice(0,10)
-}
+  const scores: Scores = { authority, aio, geo, aeo, citation };
 
-function buildContentOpportunities(topicMap:any[]){
+  // Global entities and schema types
+  const entityCounts = new Map<string, number>();
+  const schemaCounts = new Map<string, number>();
 
-const ideas:string[] = []
-
-topicMap.forEach(([topic])=>{
-
-ideas.push(`Complete guide to ${topic}`)
-ideas.push(`${topic} best practices`)
-ideas.push(`${topic} for beginners`)
-ideas.push(`${topic} mistakes to avoid`)
-
-})
-
-return ideas.slice(0,12)
-}
-
-function authorityScores(pages:any[]){
-
-  const avg =
-    pages.reduce((a,b)=>a+b.score,0) /
-    (pages.length || 1)
-
-  return {
-    authority:Math.round(avg),
-    aio:Math.round(avg*0.65),
-    geo:Math.round(avg*0.6),
-    aeo:Math.round(avg*0.45),
-    citation:Math.round(avg*0.55),
-    entity:Math.round(avg*0.5)
+  for (const p of pages) {
+    for (const e of p.entities) entityCounts.set(e, (entityCounts.get(e) || 0) + 1);
+    for (const s of p.schemaTypes) schemaCounts.set(s, (schemaCounts.get(s) || 0) + 1);
   }
-}
 
-async function competitorScan(url:string,depth:number){
+  const entities = [...entityCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map((x) => x[0])
+    .slice(0, 12);
 
-  const pages = await crawl(url,depth)
+  const schemaTypes = [...schemaCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map((x) => x[0])
+    .slice(0, 12);
 
-  return {
-    url,
-    scores:authorityScores(pages),
-    pagesScanned:pages.length,
-    preview:websitePreview(url)
+  // Reasons per metric (your UI consumes these)
+  const reasons: Partial<Record<keyof Scores, string[]>> = {};
+
+  const thinPages = pages.filter((p) => p.wordCount < 400).length;
+  const missingSchemaPages = pages.filter((p) => !p.hasSchema).length;
+  const weakInternal = pages.filter((p) => p.internalLinks < 3).length;
+  const weakEntities = pages.filter((p) => p.entities.length < 3).length;
+  const weakFaq = pages.filter((p) => p.recommendations.some((r) => r.toLowerCase().includes("faq"))).length;
+
+  reasons.authority = [
+    `${thinPages} pages look thin on content.`,
+    `${missingSchemaPages} pages are missing schema.`,
+    `${weakInternal} pages have weak internal linking.`,
+  ].filter(Boolean);
+
+  reasons.aio = [
+    `${weakFaq} pages lack clear Q and A style structure.`,
+    `${missingSchemaPages} pages missing JSON-LD reduces extraction confidence.`,
+  ].filter(Boolean);
+
+  reasons.geo = [
+    `${weakEntities} pages have weak entity signals.`,
+    `${weakInternal} pages need better internal linking to form topical clusters.`,
+  ].filter(Boolean);
+
+  reasons.aeo = [
+    `${weakFaq} pages need FAQ blocks for answer extraction.`,
+    `${missingSchemaPages} pages missing FAQ and breadcrumb schema.`,
+  ].filter(Boolean);
+
+  // Build recommendations (richer objects or strings, your UI normalizes either)
+  const recs = new Map<string, { title: string; severity: Tier; why: string; how: string; impact: number }>();
+
+  const addRec = (key: string, rec: { title: string; severity: Tier; why: string; how: string; impact: number }) => {
+    if (!recs.has(key)) recs.set(key, rec);
+  };
+
+  if (missingSchemaPages > 0) {
+    addRec("schema", {
+      title: "Add JSON-LD schema to key pages",
+      severity: "Critical",
+      why: "Schema tells AI exactly what your business and pages represent, which increases trust and citation likelihood.",
+      how: "Add Organization (or LocalBusiness), Website, Breadcrumb, and FAQPage schema. Validate JSON-LD.",
+      impact: 9,
+    });
   }
+
+  if (thinPages > 0) {
+    addRec("depth", {
+      title: "Increase content depth on thin pages",
+      severity: "Critical",
+      why: "Thin pages fail intent, AI engines avoid citing pages that do not fully answer questions.",
+      how: "Expand service pages with proof, process, FAQs, pricing ranges, and examples. Target 800+ words where it matters.",
+      impact: 9,
+    });
+  }
+
+  if (weakInternal > 0) {
+    addRec("internal", {
+      title: "Strengthen internal linking to form topic clusters",
+      severity: "Needs Work",
+      why: "Internal links create topic clusters and distribute authority across important pages.",
+      how: "Add 6 to 10 contextual internal links per core page to related services, locations, and supporting guides.",
+      impact: 7,
+    });
+  }
+
+  if (weakEntities > 0) {
+    addRec("entities", {
+      title: "Improve entity clarity (brand signals)",
+      severity: "Needs Work",
+      why: "AI needs clear business identity to trust and recommend you.",
+      how: "Add consistent business name, about page, contact NAP, and Organization schema. Use consistent terminology across pages.",
+      impact: 7,
+    });
+  }
+
+  addRec("faq", {
+    title: "Add FAQ sections to core pages",
+    severity: "Needs Work",
+    why: "FAQ blocks create extractable answers, improving AEO and AI recommendation likelihood.",
+    how: "Add 5 to 8 FAQs per core page, answer concisely, then add FAQPage schema.",
+    impact: 7,
+  });
+
+  const recommendations = [...recs.values()].slice(0, 10);
+
+  // Convert page results to UI-friendly shape
+  const uiPages = pages.slice(0, 20).map((p) => ({
+    url: p.url,
+    title: p.title,
+    scores: { authority: p.score },
+    issues: p.issues,
+    recommendations: p.recommendations,
+  }));
+
+  return { scores, recommendations, reasons, entities, schemaTypes, pages: uiPages, pagesScanned };
 }
 
-async function aiRecommendationTest(business:string,service:string,city:string){
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as {
+      url?: string;
+      competitor?: string;
+      depth?: string | number;
+    };
 
-  const prompts = [
-    `best ${service} in ${city}`,
-    `top ${service} companies ${city}`,
-    `who are trusted ${service} providers in ${city}`
-  ]
+    const url = normalize(body.url || "");
+    if (!url) {
+      return NextResponse.json({ error: "Missing url" }, { status: 400 });
+    }
 
-  const results = prompts.map(p=>({
-    prompt:p,
-    competitors:[
-      "Competitor A",
-      "Competitor B",
-      "Competitor C"
-    ],
-    yourBusiness:false
-  }))
+    const limit = depthToLimit(body.depth);
+    const pages = await crawlSite(url, limit);
 
-  return results
-}
+    const base = summarizeSite(pages);
 
-export async function POST(req:Request){
+    let competitorBlock: any = null;
 
-  const {
-    url,
-    competitor,
-    depth,
-    business,
-    service,
-    city
-  } = await req.json()
+    const competitorUrl = normalize(body.competitor || "");
+    if (competitorUrl) {
+      const compPages = await crawlSite(competitorUrl, Math.min(limit, 12));
+      const compSummary = summarizeSite(compPages);
 
-  const normalized = normalize(url)
+      competitorBlock = {
+        url: competitorUrl,
+        scores: compSummary.scores,
+        entities: compSummary.entities,
+        schemaTypes: compSummary.schemaTypes,
+      };
+    }
 
-  const pages = await crawl(normalized, depth || 10)
-
-  const scores = authorityScores(pages)
-
-  const topicMap = buildTopicMap(pages)
-
-  const opportunities =
-    buildContentOpportunities(topicMap)
-
-  const entities =
-    [...new Set(pages.flatMap(p=>p.entities))].slice(0,15)
-
-  const schemas =
-    [...new Set(pages.flatMap(p=>p.schemas))]
-
-  const competitorData =
-    competitor
-      ? await competitorScan(normalize(competitor),depth || 8)
-      : null
-
-  const aiVisibility =
-    business && service && city
-      ? await aiRecommendationTest(business,service,city)
-      : []
-
-  return NextResponse.json({
-
-    url,
-
-    previewImage:websitePreview(normalized),
-
-    scores,
-
-    pages,
-
-    pagesScanned:pages.length,
-
-    entities,
-
-    schemaTypes:schemas,
-
-    topicMap,
-
-    opportunities,
-
-    aiRecommendationTesting:aiVisibility,
-
-    recommendations:[
-      "Add FAQ schema for answer extraction",
-      "Increase entity mentions across headings",
-      "Strengthen topic clusters with supporting content",
-      "Improve internal linking between related pages"
-    ],
-
-    monitoring:{
-      scanFrequency:"weekly",
-      lastScan:new Date().toISOString(),
-      alerts:[
-        "Schema missing from several pages",
-        "Authority score decreased compared to previous scan"
-      ]
-    },
-
-    competitor:competitorData
-
-  })
-
+    return NextResponse.json({
+      ...base,
+      competitor: competitorBlock,
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Scan failed" },
+      { status: 500 }
+    );
+  }
 }
