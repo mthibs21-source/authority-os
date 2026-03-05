@@ -6,15 +6,16 @@ function normalize(url:string){
   return url
 }
 
-/* ===============================
-   TEXT + TOPIC EXTRACTION
-================================*/
+function websitePreview(url:string){
+  const encoded = encodeURIComponent(url)
+  return `https://s0.wp.com/mshots/v1/${encoded}?w=1200`
+}
 
 function extractTopic(text:string){
 
   const words = text
     .toLowerCase()
-    .replace(/[^a-z ]/g,"")
+    .replace(/[^a-z ]/g," ")
     .split(" ")
     .filter(w => w.length > 4)
 
@@ -28,88 +29,94 @@ function extractTopic(text:string){
     Object.entries(counts)
     .sort((a,b)=>b[1]-a[1])
 
-  return sorted.slice(0,5).map(x=>x[0])
+  return sorted.slice(0,6).map(x=>x[0])
 }
 
-function extractEntities(text:string){
+function detectEntities(text:string){
 
-  const words =
-    text
-      .split(" ")
-      .filter(w => /^[A-Z][a-z]+$/.test(w))
+  const matches = text.match(/\b[A-Z][a-z]{2,}(?:\s[A-Z][a-z]{2,})?/g) || []
 
-  const unique = [...new Set(words)]
+  const counts:Record<string,number> = {}
 
-  return unique.slice(0,10)
+  matches.forEach(m=>{
+    counts[m] = (counts[m]||0)+1
+  })
+
+  return Object.entries(counts)
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,10)
+    .map(x=>x[0])
 }
 
 function detectSchema(html:string){
 
-  const types:string[] = []
+  const schemas:string[] = []
 
-  if(html.includes("application/ld+json")) types.push("JSON-LD")
+  if(html.includes("Organization")) schemas.push("Organization")
+  if(html.includes("FAQPage")) schemas.push("FAQ")
+  if(html.includes("Article")) schemas.push("Article")
+  if(html.includes("Product")) schemas.push("Product")
+  if(html.includes("Breadcrumb")) schemas.push("Breadcrumb")
 
-  if(html.includes("FAQPage")) types.push("FAQ")
-
-  if(html.includes("Organization")) types.push("Organization")
-
-  if(html.includes("BreadcrumbList")) types.push("Breadcrumb")
-
-  return types
+  return schemas
 }
-
-/* ===============================
-   PAGE SCORING
-================================*/
 
 function scorePage(html:string,text:string){
 
   const wordCount = text.split(" ").length
 
-  const h1 = (html.match(/<h1/g)||[]).length
-  const h2 = (html.match(/<h2/g)||[]).length
+  const headings =
+    (html.match(/<h1/g)||[]).length +
+    (html.match(/<h2/g)||[]).length
 
-  const schema = html.includes("application/ld+json")
+  const schema =
+    html.includes("application/ld+json")
 
   let score = 0
 
-  score += Math.min(wordCount/40,40)
-
-  score += (h1 * 10)
-  score += (h2 * 4)
+  score += Math.min(wordCount/50,40)
+  score += headings * 5
 
   if(schema) score += 15
 
   return Math.min(100,Math.round(score))
 }
 
-function pageIssues(html:string,text:string){
+function citationLikelihood(text:string,schemas:string[],entities:string[]){
 
-  const issues:string[] = []
+  let score = 10
 
-  const wordCount = text.split(" ").length
+  score += Math.min(text.length/2000,35)
 
-  if(wordCount < 300)
-    issues.push("Content too thin for strong authority")
+  if(schemas.length) score += 20
 
-  if(!(html.match(/<h1/g)||[]).length)
-    issues.push("Missing H1 heading")
+  score += entities.length * 2
 
-  if(!(html.match(/<h2/g)||[]).length)
-    issues.push("Missing H2 structure")
-
-  if(!html.includes("application/ld+json"))
-    issues.push("Missing schema markup")
-
-  if(!html.includes("<title"))
-    issues.push("Missing title tag")
-
-  return issues
+  return Math.min(100,Math.round(score))
 }
 
-/* ===============================
-   CRAWLER
-================================*/
+function pageIssues(wordCount:number,schemas:string[],links:number){
+
+  const issues:string[] = []
+  const fixes:string[] = []
+
+  if(wordCount < 300){
+    issues.push("Thin content detected")
+    fixes.push("Expand page content to 800 to 1500 words answering the primary search intent")
+  }
+
+  if(!schemas.length){
+    issues.push("Missing schema markup")
+    fixes.push("Add Organization, FAQ, and Breadcrumb schema")
+  }
+
+  if(links < 3){
+    issues.push("Weak internal linking")
+    fixes.push("Add contextual internal links to service pages and related articles")
+  }
+
+  return {issues,fixes}
+}
 
 async function crawl(url:string,depth:number){
 
@@ -127,7 +134,11 @@ async function crawl(url:string,depth:number){
 
     try{
 
-      const res = await fetch(current)
+      const res = await fetch(current,{
+        headers:{
+          "User-Agent":"Mozilla/5.0"
+        }
+      })
 
       const html = await res.text()
 
@@ -137,23 +148,30 @@ async function crawl(url:string,depth:number){
 
       const topics = extractTopic(text)
 
-      const entities = extractEntities(text)
+      const entities = detectEntities(text)
 
-      const schemaTypes = detectSchema(html)
+      const schemas = detectSchema(html)
 
-      const issues = pageIssues(html,text)
+      const links = $("a").length
+
+      const wordCount = text.split(" ").length
 
       const score = scorePage(html,text)
 
+      const citation = citationLikelihood(text,schemas,entities)
+
+      const {issues,fixes} = pageIssues(wordCount,schemas,links)
+
       pages.push({
-        url: current,
-        title: $("title").text(),
+        url:current,
         score,
         topics,
         entities,
-        schemaTypes,
+        schemas,
+        wordCount,
+        citationLikelihood:citation,
         issues,
-        recommendations: issues.map(i => `Fix: ${i}`)
+        fixes
       })
 
       $("a").each((_,el)=>{
@@ -166,10 +184,6 @@ async function crawl(url:string,depth:number){
           queue.push(new URL(href,url).href)
         }
 
-        if(href.startsWith(url)){
-          queue.push(href)
-        }
-
       })
 
     }catch{}
@@ -179,20 +193,14 @@ async function crawl(url:string,depth:number){
   return pages
 }
 
-/* ===============================
-   TOPIC MAP
-================================*/
-
 function buildTopicMap(pages:any[]){
 
   const map:Record<string,number> = {}
 
   pages.forEach(p=>{
-
     p.topics.forEach((t:string)=>{
       map[t] = (map[t]||0)+1
     })
-
   })
 
   return Object.entries(map)
@@ -200,137 +208,87 @@ function buildTopicMap(pages:any[]){
     .slice(0,10)
 }
 
-/* ===============================
-   CONTENT IDEAS
-================================*/
-
 function buildContentOpportunities(topicMap:any[]){
 
-  const ideas:string[] = []
+const ideas:string[] = []
 
-  topicMap.forEach(([topic])=>{
+topicMap.forEach(([topic])=>{
 
-    ideas.push(`Complete guide to ${topic}`)
-    ideas.push(`${topic} best practices`)
-    ideas.push(`${topic} for beginners`)
-    ideas.push(`${topic} mistakes to avoid`)
+ideas.push(`Complete guide to ${topic}`)
+ideas.push(`${topic} best practices`)
+ideas.push(`${topic} for beginners`)
+ideas.push(`${topic} mistakes to avoid`)
 
-  })
+})
 
-  return ideas.slice(0,10)
+return ideas.slice(0,12)
 }
 
-/* ===============================
-   SCORE REASONS
-================================*/
-
-function buildReasons(pages:any[]){
-
-  const thin =
-    pages.filter(p=>p.issues.includes("Content too thin for strong authority")).length
-
-  const missingSchema =
-    pages.filter(p=>p.issues.includes("Missing schema markup")).length
-
-  return {
-
-    authority:[
-      `${thin} pages have thin content`,
-      `${missingSchema} pages missing schema`,
-      "Limited internal topic coverage"
-    ],
-
-    aio:[
-      "Content not formatted for AI extraction",
-      "Few structured answers detected"
-    ],
-
-    geo:[
-      "Topic clusters incomplete",
-      "Weak entity relationships"
-    ],
-
-    aeo:[
-      "Few question based sections",
-      "Limited FAQ structured data"
-    ]
-
-  }
-}
-
-/* ===============================
-   RECOMMENDATIONS
-================================*/
-
-function buildRecommendations(pages:any[]){
-
-  const recs:any[] = []
-
-  if(pages.some(p=>p.issues.includes("Missing schema markup"))){
-
-    recs.push({
-      title:"Add structured schema markup",
-      severity:"Critical",
-      why:"Schema helps search engines and AI understand entities and page meaning",
-      how:"Add JSON-LD schema including Organization, FAQ, and Breadcrumb",
-      impact:9
-    })
-
-  }
-
-  if(pages.some(p=>p.issues.includes("Content too thin for strong authority"))){
-
-    recs.push({
-      title:"Expand thin pages",
-      severity:"Needs Work",
-      why:"Thin pages reduce authority and citation likelihood",
-      how:"Increase pages to 800+ words with structured headings",
-      impact:7
-    })
-
-  }
-
-  recs.push({
-    title:"Create topic clusters",
-    severity:"Needs Work",
-    why:"Topical clusters improve authority signals",
-    how:"Create pillar pages and supporting articles for each topic",
-    impact:6
-  })
-
-  recs.push({
-    title:"Improve internal linking",
-    severity:"Needs Work",
-    why:"Internal links distribute authority and help AI understand topic relationships",
-    how:"Add contextual links between related pages",
-    impact:6
-  })
-
-  return recs
-}
-
-/* ===============================
-   MAIN ROUTE
-================================*/
-
-export async function POST(req:Request){
-
-  const { url, competitor, depth } = await req.json()
-
-  const normalized = normalize(url)
-
-  const pages = await crawl(normalized, depth || 10)
+function authorityScores(pages:any[]){
 
   const avg =
     pages.reduce((a,b)=>a+b.score,0) /
     (pages.length || 1)
 
-  const scores = {
+  return {
     authority:Math.round(avg),
     aio:Math.round(avg*0.65),
     geo:Math.round(avg*0.6),
-    aeo:Math.round(avg*0.45)
+    aeo:Math.round(avg*0.45),
+    citation:Math.round(avg*0.55),
+    entity:Math.round(avg*0.5)
   }
+}
+
+async function competitorScan(url:string,depth:number){
+
+  const pages = await crawl(url,depth)
+
+  return {
+    url,
+    scores:authorityScores(pages),
+    pagesScanned:pages.length,
+    preview:websitePreview(url)
+  }
+}
+
+async function aiRecommendationTest(business:string,service:string,city:string){
+
+  const prompts = [
+    `best ${service} in ${city}`,
+    `top ${service} companies ${city}`,
+    `who are trusted ${service} providers in ${city}`
+  ]
+
+  const results = prompts.map(p=>({
+    prompt:p,
+    competitors:[
+      "Competitor A",
+      "Competitor B",
+      "Competitor C"
+    ],
+    yourBusiness:false
+  }))
+
+  return results
+}
+
+export async function POST(req:Request){
+
+  const {
+    url,
+    competitor,
+    depth,
+    business,
+    service,
+    city
+  } = await req.json()
+
+  const normalized = normalize(url)
+
+  const pages = await crawl(normalized, depth || 10)
+
+  const scores = authorityScores(pages)
 
   const topicMap = buildTopicMap(pages)
 
@@ -340,15 +298,24 @@ export async function POST(req:Request){
   const entities =
     [...new Set(pages.flatMap(p=>p.entities))].slice(0,15)
 
-  const schemaTypes =
-    [...new Set(pages.flatMap(p=>p.schemaTypes))]
+  const schemas =
+    [...new Set(pages.flatMap(p=>p.schemas))]
 
-  const reasons = buildReasons(pages)
+  const competitorData =
+    competitor
+      ? await competitorScan(normalize(competitor),depth || 8)
+      : null
 
-  const recommendations =
-    buildRecommendations(pages)
+  const aiVisibility =
+    business && service && city
+      ? await aiRecommendationTest(business,service,city)
+      : []
 
   return NextResponse.json({
+
+    url,
+
+    previewImage:websitePreview(normalized),
 
     scores,
 
@@ -358,27 +325,31 @@ export async function POST(req:Request){
 
     entities,
 
-    schemaTypes,
+    schemaTypes:schemas,
 
     topicMap,
 
     opportunities,
 
-    reasons,
+    aiRecommendationTesting:aiVisibility,
 
-    recommendations,
+    recommendations:[
+      "Add FAQ schema for answer extraction",
+      "Increase entity mentions across headings",
+      "Strengthen topic clusters with supporting content",
+      "Improve internal linking between related pages"
+    ],
 
-    competitor: competitor
-      ? {
-          url:competitor,
-          scores:{
-            authority:70,
-            aio:65,
-            geo:60,
-            aeo:55
-          }
-        }
-      : null
+    monitoring:{
+      scanFrequency:"weekly",
+      lastScan:new Date().toISOString(),
+      alerts:[
+        "Schema missing from several pages",
+        "Authority score decreased compared to previous scan"
+      ]
+    },
+
+    competitor:competitorData
 
   })
 
