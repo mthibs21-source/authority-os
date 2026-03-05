@@ -61,7 +61,7 @@ function detectEntities($:cheerio.CheerioAPI){
 
   if(text.match(/inc|llc|corporation/i)) entities.push("Organization")
   if(text.match(/product/i)) entities.push("Product")
-  if(text.match(/service/i)) entities.push("Service")
+  if(text.match(/service|solution/i)) entities.push("Service")
 
   if($("footer").text().match(/copyright|©/i)){
     entities.push("Brand")
@@ -81,8 +81,9 @@ function scoreAIO($:cheerio.CheerioAPI){
 
   const headings = $("h1,h2,h3").length
   const paragraphs = $("p").length
+  const lists = $("ul,ol").length
 
-  return score(headings*5 + paragraphs*0.5)
+  return score(headings*5 + paragraphs*0.4 + lists*3)
 
 }
 
@@ -113,6 +114,56 @@ function scoreAEO($:cheerio.CheerioAPI){
 
 }
 
+/* -----------------------------
+   NEW ADVANCED ANALYSIS
+--------------------------------*/
+
+function aiCitationLikelihood($:cheerio.CheerioAPI){
+
+  const headings = $("h1,h2,h3").length
+  const lists = $("ul,ol").length
+  const schema = $('script[type="application/ld+json"]').length
+  const paragraphs = $("p").length
+
+  return score(
+    headings*4 +
+    lists*3 +
+    schema*10 +
+    paragraphs*0.3
+  )
+
+}
+
+function topicalAuthorityScore($:cheerio.CheerioAPI){
+
+  const internalLinks = $("a[href^='/']").length
+  const headings = $("h2,h3").length
+  const sections = $("section,article").length
+
+  return score(
+    internalLinks*1.5 +
+    headings*3 +
+    sections*5
+  )
+
+}
+
+function extractionQuality($:cheerio.CheerioAPI){
+
+  const paragraphs = $("p").length
+  const lists = $("ul,ol").length
+  const tables = $("table").length
+
+  return score(
+    paragraphs*0.5 +
+    lists*5 +
+    tables*10
+  )
+
+}
+
+/* ----------------------------- */
+
 function buildPreview(url:string){
 
   const encoded = encodeURIComponent(url)
@@ -135,6 +186,10 @@ async function scanSite(url:string){
   const geo = scoreGEO($)
   const aeo = scoreAEO($)
 
+  const aiCitation = aiCitationLikelihood($)
+  const topicalAuthority = topicalAuthorityScore($)
+  const extractionScore = extractionQuality($)
+
   return {
 
     scores:{
@@ -142,6 +197,14 @@ async function scanSite(url:string){
       aio,
       geo,
       aeo
+    },
+
+    /* advanced metrics (UI optional) */
+
+    aiSignals:{
+      citationLikelihood:aiCitation,
+      topicalAuthority,
+      extractionScore
     },
 
     schemaTypes,
