@@ -1,251 +1,290 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import React, { useEffect, useMemo, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { motion } from "framer-motion";
 
-export default function Home() {
+/* ================= TYPES ================= */
 
-const [url,setUrl] = useState("")
-const [competitor,setCompetitor] = useState("")
-const [scanType,setScanType] = useState("standard")
-const [loading,setLoading] = useState(false)
-const [results,setResults] = useState<any>(null)
+type Scores = {
+  authority: number;
+  aio: number;
+  geo: number;
+  aeo: number;
+  citation?: number;
+};
 
-async function runScan(){
+type ScanResponse = {
+  scores: Scores;
+  previewImage?: string;
+  recommendations?: any[];
+  reasons?: Partial<Record<keyof Scores, string[]>>;
+  entities?: string[];
+  schemaTypes?: string[];
+  pages?: Array<{
+    url: string;
+    title?: string;
+    scores?: Partial<Scores>;
+    issues?: string[];
+    recommendations?: string[];
+  }>;
+  competitor?: {
+    url: string;
+    scores: Scores;
+    entities?: string[];
+    schemaTypes?: string[];
+  };
+};
 
-if(!url) return
+/* ================= HELPERS ================= */
 
-setLoading(true)
+function clamp(n: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, n));
+}
 
-try{
+function normalizeInputUrl(input: string) {
+  const v = input.trim();
+  if (!v) return "";
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
+  return `https://${v}`;
+}
 
-const res = await fetch("/api/scan",{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-url,
-competitor,
-scanType
-})
-})
+function stripTrailingSlash(u: string) {
+  return u.endsWith("/") ? u.slice(0, -1) : u;
+}
 
-const data = await res.json()
+function safeArray<T>(v: any): T[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [];
+}
 
-setResults(data)
+function depthToNumber(depth: "Light" | "Standard" | "Deep") {
+  if (depth === "Light") return 6;
+  if (depth === "Deep") return 20;
+  return 10;
+}
 
-}catch(e){
+/* ================= MAIN PAGE ================= */
 
-console.error(e)
+export default function AuthorityOS() {
+
+  const [url, setUrl] = useState("");
+  const [competitor, setCompetitor] = useState("");
+  const [depth, setDepth] = useState<"Light" | "Standard" | "Deep">("Standard");
+
+  const [loading, setLoading] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [data, setData] = useState<ScanResponse | null>(null);
+
+  const normalizedUrl = useMemo(() => normalizeInputUrl(url), [url]);
+  const normalizedCompetitor = useMemo(() => normalizeInputUrl(competitor), [competitor]);
+
+  const runScan = async () => {
+
+    if (!normalizedUrl) return;
+
+    setLoading(true);
+    setScanned(false);
+    setError(null);
+    setData(null);
+
+    try {
+
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: normalizedUrl,
+          competitor: competitor.trim() ? normalizedCompetitor : undefined,
+          depth: depthToNumber(depth)
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json?.scores) {
+        throw new Error(json?.error || "Scan failed");
+      }
+
+      setData(json);
+      setScanned(true);
+
+    } catch (e: any) {
+
+      setError(e?.message || "Scan failed");
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  };
+
+  const recs = useMemo(
+    () => safeArray<any>(data?.recommendations),
+    [data?.recommendations]
+  );
+
+  return (
+
+    <div className="min-h-screen bg-[#070d18] text-white overflow-hidden relative">
+
+      <TopNav />
+
+      <Hero onJump={() => document.getElementById("scan")?.scrollIntoView({ behavior: "smooth" })} />
+
+      {/* SCAN */}
+      <section id="scan" className="max-w-6xl mx-auto px-6 py-16">
+
+        <Card className="bg-[#111a2b]/80 backdrop-blur border border-[#eaff00]/25 p-8 md:p-10">
+
+          <CardContent className="space-y-6">
+
+            <div className="grid md:grid-cols-3 gap-4">
+
+              <Input
+                placeholder="Your website, example.com"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="bg-[#070d18] border-[#eaff00]/35 text-white"
+              />
+
+              <Input
+                placeholder="Competitor website optional"
+                value={competitor}
+                onChange={(e) => setCompetitor(e.target.value)}
+                className="bg-[#070d18] border-[#eaff00]/20 text-white"
+              />
+
+              <Button
+                onClick={runScan}
+                disabled={loading}
+                className="bg-[#eaff00] text-black font-extrabold"
+              >
+                {loading ? "Analyzing..." : "Scan Website"}
+              </Button>
+
+            </div>
+
+            <div className="flex gap-3">
+
+              {(["Light","Standard","Deep"] as const).map((d) => (
+
+                <button
+                  key={d}
+                  onClick={() => setDepth(d)}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                    depth === d
+                      ? "border-[#eaff00]/50 bg-[#eaff00]/10 text-[#eaff00]"
+                      : "border-white/10 bg-white/5 text-slate-300"
+                  }`}
+                >
+                  {d}
+                </button>
+
+              ))}
+
+            </div>
+
+            {error && <p className="text-red-300">{error}</p>}
+
+          </CardContent>
+
+        </Card>
+
+      </section>
+
+      {/* RESULTS */}
+
+      {scanned && data && (
+
+        <section className="max-w-6xl mx-auto px-6 pb-28 space-y-12">
+
+          <ScoreDashboard scores={data.scores} />
+
+        </section>
+
+      )}
+
+    </div>
+
+  );
 
 }
 
-setLoading(false)
+/* ================= NAV ================= */
 
+function TopNav() {
+  return (
+    <div className="max-w-6xl mx-auto px-6 pt-8 flex items-center justify-between">
+      <div className="text-2xl font-extrabold text-[#eaff00]">AuthorityOS</div>
+    </div>
+  );
 }
 
-return (
+/* ================= HERO ================= */
 
-<div className="min-h-screen bg-[#0b0b0d] text-white">
+function Hero({ onJump }: { onJump: () => void }) {
+  return (
+    <section className="max-w-6xl mx-auto px-6 pt-20 pb-14">
+      <h1 className="text-6xl font-extrabold">
+        Become the <span className="text-[#eaff00]">Authority</span> AI Engines Cite
+      </h1>
 
-{/* NAVBAR */}
+      <p className="mt-6 text-slate-300 text-lg max-w-xl">
+        AuthorityOS shows what to fix so AI search can classify your site and cite it.
+      </p>
 
-<div className="max-w-7xl mx-auto flex justify-between items-center py-6 px-6">
+      <Button
+        onClick={onJump}
+        className="mt-8 bg-[#eaff00] text-black font-extrabold"
+      >
+        Run Authority Scan
+      </Button>
+    </section>
+  );
+}
 
-<h1 className="text-xl font-semibold tracking-wide text-[#d4ff00]">
-AuthorityOS
-</h1>
+/* ================= SCORE DASHBOARD ================= */
 
-</div>
+function ScoreDashboard({ scores }: { scores: Scores }) {
 
+  const items = [
+    { label:"Authority",value:scores.authority },
+    { label:"AIO",value:scores.aio },
+    { label:"GEO",value:scores.geo },
+    { label:"AEO",value:scores.aeo }
+  ];
 
-{/* HERO */}
+  return (
 
-<section className="max-w-6xl mx-auto px-6 pt-12 pb-10 text-center">
+    <div className="grid md:grid-cols-4 gap-6">
 
-<div className="text-[#d4ff00] font-semibold mb-4 text-lg">
+      {items.map((s) => (
 
-AI Search Authority Scanner
+        <Card key={s.label} className="bg-[#111a2b] border border-white/10">
 
-</div>
+          <CardContent className="p-7">
 
-<h2 className="text-5xl font-bold mb-6">
+            <div className="text-sm text-slate-300">{s.label}</div>
 
-Will ChatGPT Recommend Your Business?
+            <div className="text-4xl font-extrabold text-[#eaff00] mt-2">
+              {clamp(s.value)}
+            </div>
 
-</h2>
+          </CardContent>
 
-<p className="text-gray-400 text-lg max-w-3xl mx-auto mb-10">
+        </Card>
 
-AuthorityOS scans your website and determines how visible your business
-is inside AI search engines like ChatGPT, Gemini and Perplexity.
+      ))}
 
-</p>
+    </div>
 
-</section>
-
-
-{/* PRODUCT PREVIEW IMAGE */}
-
-<section className="max-w-6xl mx-auto px-6 pb-16">
-
-<div className="bg-[#111114] border border-[#1e1e21] rounded-xl p-8 shadow-xl">
-
-<div className="text-sm text-gray-400 mb-6">
-
-Example AI Authority Scan
-
-</div>
-
-<div className="grid md:grid-cols-4 gap-4">
-
-<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
-
-<div className="text-gray-400 mb-2">
-AI Authority
-</div>
-
-<div className="text-3xl font-bold text-[#d4ff00]">
-74
-</div>
-
-</div>
-
-<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
-
-<div className="text-gray-400 mb-2">
-AEO Score
-</div>
-
-<div className="text-3xl font-bold text-[#d4ff00]">
-61
-</div>
-
-</div>
-
-<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
-
-<div className="text-gray-400 mb-2">
-GEO Score
-</div>
-
-<div className="text-3xl font-bold text-[#d4ff00]">
-58
-</div>
-
-</div>
-
-<div className="bg-[#16161a] p-6 rounded-lg border border-[#222]">
-
-<div className="text-gray-400 mb-2">
-Entity Authority
-</div>
-
-<div className="text-3xl font-bold text-[#d4ff00]">
-66
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-</section>
-
-
-{/* SCAN BAR */}
-
-<section className="max-w-6xl mx-auto px-6 pb-20">
-
-<div className="bg-[#111114] border border-[#1e1e21] rounded-xl p-6 shadow-lg">
-
-<div className="grid md:grid-cols-4 gap-4">
-
-<input
-value={url}
-onChange={e=>setUrl(e.target.value)}
-placeholder="Enter website URL"
-className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
-/>
-
-<input
-value={competitor}
-onChange={e=>setCompetitor(e.target.value)}
-placeholder="Competitor (optional)"
-className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
-/>
-
-<select
-value={scanType}
-onChange={(e)=>setScanType(e.target.value)}
-className="bg-[#1a1a1d] px-4 py-3 rounded-lg border border-[#26262a]"
->
-
-<option value="light">Light Scan</option>
-<option value="standard">Standard Scan</option>
-<option value="deep">Deep Scan</option>
-
-</select>
-
-<button
-onClick={runScan}
-className="bg-[#d4ff00] text-black font-semibold rounded-lg py-3 hover:brightness-110 transition"
->
-
-{loading ? "Scanning..." : "Run Scan"}
-
-</button>
-
-</div>
-
-</div>
-
-</section>
-
-
-{/* RESULTS */}
-
-{results && (
-
-<section className="max-w-6xl mx-auto px-6 pb-24">
-
-<h3 className="text-2xl mb-8">
-
-Scan Results
-
-</h3>
-
-<div className="grid md:grid-cols-4 gap-6">
-
-{Object.entries(results.scores || {}).map(([k,v])=>(
-
-<div key={k} className="bg-[#141416] p-6 rounded-xl border border-[#1e1e21]">
-
-<div className="text-gray-400 mb-2 capitalize">
-
-{k}
-
-</div>
-
-<div className="text-3xl font-bold text-[#d4ff00]">
-
-{v as number}
-
-</div>
-
-</div>
-
-))}
-
-</div>
-
-</section>
-
-)}
-
-</div>
-
-)
+  );
 
 }
