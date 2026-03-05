@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
-type Scores = {
-  authority:number
-  aio:number
-  geo:number
-  aeo:number
-}
-
 function clamp(n:number,min=0,max=100){
   return Math.max(min,Math.min(max,n))
 }
@@ -22,7 +15,7 @@ async function fetchHTML(url:string){
 
     const res = await fetch(url,{
       headers:{
-        "User-Agent":"Mozilla/5.0 AuthorityOS Scanner"
+        "User-Agent":"Mozilla/5.0 AuthorityOS"
       },
       cache:"no-store"
     })
@@ -66,11 +59,11 @@ function detectEntities($:cheerio.CheerioAPI){
   const entities:string[]=[]
   const text = $("body").text()
 
-  if(text.match(/inc|llc|ltd|corporation/i)) entities.push("Organization")
+  if(text.match(/inc|llc|corporation/i)) entities.push("Organization")
   if(text.match(/product/i)) entities.push("Product")
-  if(text.match(/service|solutions/i)) entities.push("Service")
+  if(text.match(/service/i)) entities.push("Service")
 
-  if($("footer").text().match(/©|copyright/i)){
+  if($("footer").text().match(/copyright|©/i)){
     entities.push("Brand")
   }
 
@@ -80,10 +73,7 @@ function detectEntities($:cheerio.CheerioAPI){
 
 function scoreAuthority(schema:string[],entities:string[]){
 
-  const schemaScore = schema.length * 18
-  const entityScore = entities.length * 22
-
-  return score(schemaScore + entityScore)
+  return score(schema.length*20 + entities.length*20)
 
 }
 
@@ -91,9 +81,8 @@ function scoreAIO($:cheerio.CheerioAPI){
 
   const headings = $("h1,h2,h3").length
   const paragraphs = $("p").length
-  const lists = $("ul,ol").length
 
-  return score(headings*5 + paragraphs*0.4 + lists*3)
+  return score(headings*5 + paragraphs*0.5)
 
 }
 
@@ -104,9 +93,7 @@ function scoreGEO($:cheerio.CheerioAPI){
 
   if(links===0) return 0
 
-  const ratio = internal / links
-
-  return score(ratio * 100)
+  return score((internal/links)*100)
 
 }
 
@@ -114,48 +101,23 @@ function scoreAEO($:cheerio.CheerioAPI){
 
   const faqSchema = $('[itemtype*="FAQPage"]').length
   const questions = $("h2:contains('?'),h3:contains('?')").length
+  const lists = $("ul,ol").length
+  const definitions = $("p:contains(' is '),p:contains(' are ')").length
 
-  return score(faqSchema*40 + questions*3)
+  return score(
+    faqSchema*40 +
+    questions*5 +
+    lists*2 +
+    definitions*1
+  )
 
 }
 
-function buildRecommendations(schema:string[],entities:string[]){
+function buildPreview(url:string){
 
-  const recs:any[]=[]
+  const encoded = encodeURIComponent(url)
 
-  if(schema.length===0){
-
-    recs.push({
-      title:"Add structured schema markup",
-      severity:"Critical",
-      why:"Schema allows AI and search engines to identify your entity and relationships.",
-      how:"Add Organization, Website and FAQ schema to your site.",
-      impact:9
-    })
-
-  }
-
-  if(!entities.includes("Organization")){
-
-    recs.push({
-      title:"Strengthen organization entity",
-      severity:"Needs Work",
-      why:"AI models rely on strong entity recognition.",
-      how:"Add About page, Organization schema and clear brand references.",
-      impact:7
-    })
-
-  }
-
-  recs.push({
-    title:"Improve internal linking",
-    severity:"Needs Work",
-    why:"Improves topical authority clusters and page discovery.",
-    how:"Add contextual links between related pages.",
-    impact:6
-  })
-
-  return recs
+  return `https://s.wordpress.com/mshots/v1/${encoded}?w=1200`
 
 }
 
@@ -196,17 +158,17 @@ async function scanSite(url:string){
       }
     ],
 
-    recommendations:buildRecommendations(schemaTypes,entities)
+    recommendations:[
+      {
+        title:"Improve internal linking",
+        severity:"Needs Work",
+        why:"Helps build topical authority clusters",
+        how:"Add contextual links between service pages",
+        impact:6
+      }
+    ]
 
   }
-
-}
-
-function preview(url:string){
-
-  const encoded = encodeURIComponent(url)
-
-  return `https://s.wordpress.com/mshots/v1/${encoded}?w=1200`
 
 }
 
@@ -243,7 +205,7 @@ export async function POST(req:Request){
 
     ...main,
 
-    previewImage:preview(url),
+    previewImage:buildPreview(url),
 
     competitor:comp
 
