@@ -5,6 +5,8 @@ import { useState } from "react"
 export default function Home() {
 
 const [url,setUrl] = useState("")
+const [competitor,setCompetitor] = useState("")
+const [scanType,setScanType] = useState("standard")
 const [loading,setLoading] = useState(false)
 const [results,setResults] = useState<any>(null)
 
@@ -21,7 +23,11 @@ method:"POST",
 headers:{
 "Content-Type":"application/json"
 },
-body:JSON.stringify({url})
+body:JSON.stringify({
+url,
+competitor,
+scanType
+})
 })
 
 const data = await res.json()
@@ -44,84 +50,93 @@ return (
 
 {/* NAV */}
 
-<div className="max-w-6xl mx-auto flex justify-between items-center py-6 px-6">
+<div className="max-w-7xl mx-auto flex justify-between items-center py-6 px-6">
 
-<h1 className="text-xl font-semibold">
+<h1 className="text-xl font-semibold tracking-wide">
 AuthorityOS
 </h1>
 
-<button className="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg transition">
-Public Beta
-</button>
+<div className="text-[#d4ff00] font-medium">
+AI Search Authority Scanner
+</div>
 
 </div>
 
 
 {/* HERO */}
 
-<section className="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-14 items-center">
+<section className="max-w-7xl mx-auto px-6 pt-16 pb-10 text-center">
 
-<div>
+<h2 className="text-5xl font-bold mb-6">
 
-<h2 className="text-4xl md:text-5xl font-bold leading-tight mb-6">
-Understand Your Authority in AI Search
+Will ChatGPT Recommend Your Business?
+
 </h2>
 
-<p className="text-gray-300 mb-8 text-lg">
-AuthorityOS analyzes how visible your website is to modern AI search engines like ChatGPT, Gemini and Perplexity.
-Scan your site to understand your AI authority, entity signals and content opportunities.
+<p className="text-gray-400 text-lg max-w-3xl mx-auto">
+
+AuthorityOS analyzes how AI search engines interpret your website,
+your entity authority, and whether your competitors are dominating
+AI recommendations.
+
 </p>
 
-<div className="flex gap-3">
+</section>
+
+
+{/* SCAN CONTROL BAR */}
+
+<section className="max-w-6xl mx-auto px-6 pb-20">
+
+<div className="bg-[#111114] border border-[#1e1e21] rounded-xl p-6 shadow-lg">
+
+<div className="grid md:grid-cols-4 gap-4">
+
+{/* WEBSITE */}
 
 <input
 value={url}
 onChange={e=>setUrl(e.target.value)}
-placeholder="enter your website url"
-className="px-4 py-3 rounded-lg text-black w-full"
+placeholder="Enter website URL"
+className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
 />
+
+
+{/* COMPETITOR */}
+
+<input
+value={competitor}
+onChange={e=>setCompetitor(e.target.value)}
+placeholder="Competitor (optional)"
+className="bg-[#1a1a1d] px-4 py-3 rounded-lg text-white border border-[#26262a]"
+/>
+
+
+{/* SCAN TYPE */}
+
+<select
+value={scanType}
+onChange={(e)=>setScanType(e.target.value)}
+className="bg-[#1a1a1d] px-4 py-3 rounded-lg border border-[#26262a]"
+>
+
+<option value="light">Light Scan</option>
+<option value="standard">Standard Scan</option>
+<option value="deep">Deep Scan</option>
+
+</select>
+
+
+{/* BUTTON */}
 
 <button
 onClick={runScan}
-className="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg transition"
+className="bg-[#d4ff00] text-black font-semibold rounded-lg py-3 hover:brightness-110 transition"
 >
+
 {loading ? "Scanning..." : "Run Scan"}
+
 </button>
-
-</div>
-
-</div>
-
-
-{/* PRODUCT PREVIEW */}
-
-<div className="bg-[#141416] rounded-xl p-8 shadow-lg border border-[#1e1e21]">
-
-<div className="text-sm text-gray-400 mb-4">
-Authority Dashboard Preview
-</div>
-
-<div className="space-y-3">
-
-<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
-<span>AI Authority</span>
-<span className="font-bold">74</span>
-</div>
-
-<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
-<span>AEO Score</span>
-<span className="font-bold">61</span>
-</div>
-
-<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
-<span>GEO Score</span>
-<span className="font-bold">58</span>
-</div>
-
-<div className="bg-[#1e1e21] p-3 rounded-lg flex justify-between">
-<span>Entity Authority</span>
-<span className="font-bold">66</span>
-</div>
 
 </div>
 
@@ -134,26 +149,34 @@ Authority Dashboard Preview
 
 {results && (
 
-<section className="max-w-5xl mx-auto px-6 pb-20">
+<section className="max-w-6xl mx-auto px-6 pb-20">
 
 <h3 className="text-2xl mb-8">
+
 Scan Results
+
 </h3>
 
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div className="grid md:grid-cols-4 gap-6">
 
 {Object.entries(results.scores || {}).map(([k,v])=>(
-<div key={k} className="bg-[#141416] p-6 rounded-xl border border-[#1f1f22]">
 
-<div className="text-gray-400 text-sm mb-2 capitalize">
+<div key={k} className="bg-[#141416] p-6 rounded-xl border border-[#1e1e21]">
+
+<div className="text-gray-400 mb-2 capitalize">
+
 {k}
+
 </div>
 
-<div className="text-2xl font-bold">
+<div className="text-3xl font-bold text-[#d4ff00]">
+
 {v as number}
+
 </div>
 
 </div>
+
 ))}
 
 </div>
@@ -163,142 +186,66 @@ Scan Results
 )}
 
 
-{/* HOW IT WORKS */}
-
-<section className="max-w-6xl mx-auto px-6 py-20">
-
-<h3 className="text-3xl font-bold mb-12 text-center">
-How AuthorityOS Works
-</h3>
-
-<div className="grid md:grid-cols-3 gap-10">
-
-<div>
-
-<h4 className="text-xl mb-2">
-Scan Your Website
-</h4>
-
-<p className="text-gray-400">
-AuthorityOS crawls your pages and analyzes entity signals,
-content depth and topical authority.
-</p>
-
-</div>
-
-<div>
-
-<h4 className="text-xl mb-2">
-Measure AI Visibility
-</h4>
-
-<p className="text-gray-400">
-Understand how well your website appears inside AI generated answers and knowledge graphs.
-</p>
-
-</div>
-
-<div>
-
-<h4 className="text-xl mb-2">
-Find Growth Opportunities
-</h4>
-
-<p className="text-gray-400">
-Identify authority gaps, missing topics and content clusters that competitors dominate.
-</p>
-
-</div>
-
-</div>
-
-</section>
-
-
-{/* USE CASES */}
-
-<section className="bg-[#111114] py-20">
-
-<div className="max-w-6xl mx-auto px-6">
-
-<h3 className="text-3xl font-bold mb-12 text-center">
-Who Uses AuthorityOS
-</h3>
-
-<div className="grid md:grid-cols-3 gap-10">
-
-<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
-
-<h4 className="text-lg mb-2">
-SEO Agencies
-</h4>
-
-<p className="text-gray-400">
-Audit client authority and show measurable AI search improvements.
-</p>
-
-</div>
-
-<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
-
-<h4 className="text-lg mb-2">
-SaaS Founders
-</h4>
-
-<p className="text-gray-400">
-Understand how AI interprets your product pages and category positioning.
-</p>
-
-</div>
-
-<div className="bg-[#18181b] p-6 rounded-xl border border-[#222]">
-
-<h4 className="text-lg mb-2">
-Local Businesses
-</h4>
-
-<p className="text-gray-400">
-Win AI generated recommendations in local search and conversational queries.
-</p>
-
-</div>
-
-</div>
-
-</div>
-
-</section>
-
-
 {/* FEATURES */}
 
-<section className="max-w-6xl mx-auto px-6 py-20">
+<section className="max-w-7xl mx-auto px-6 pb-24">
 
 <h3 className="text-3xl font-bold mb-12 text-center">
-Platform Features
+
+Platform Capabilities
+
 </h3>
 
 <div className="grid md:grid-cols-3 gap-10">
 
-<div>
-<h4 className="text-lg mb-2">AI Authority Score</h4>
+<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
+
+<h4 className="text-[#d4ff00] mb-2">
+
+AI Authority Score
+
+</h4>
+
 <p className="text-gray-400">
-Measures how authoritative your website appears to AI systems.
+
+Measure how much AI engines trust your website.
+
 </p>
+
 </div>
 
-<div>
-<h4 className="text-lg mb-2">Topic Gap Analysis</h4>
+
+<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
+
+<h4 className="text-[#d4ff00] mb-2">
+
+Competitor AI Visibility
+
+</h4>
+
 <p className="text-gray-400">
-Identify missing topics preventing AI from recommending your site.
+
+See if competitors appear in AI answers more often.
+
 </p>
+
 </div>
 
-<div>
-<h4 className="text-lg mb-2">Entity Authority Signals</h4>
+
+<div className="bg-[#111114] p-6 rounded-xl border border-[#1e1e21]">
+
+<h4 className="text-[#d4ff00] mb-2">
+
+Schema + Entity Detection
+
+</h4>
+
 <p className="text-gray-400">
-Analyze entity relationships and structured knowledge signals.
+
+Analyze entity recognition and structured data signals.
+
 </p>
+
 </div>
 
 </div>
@@ -306,31 +253,13 @@ Analyze entity relationships and structured knowledge signals.
 </section>
 
 
-{/* FUTURE PRICING */}
+{/* FOOTER */}
 
-<section className="max-w-5xl mx-auto px-6 py-24 text-center">
+<footer className="text-center text-gray-500 pb-10">
 
-<h3 className="text-3xl font-bold mb-6">
-AuthorityOS Pro
-</h3>
+Built by Uplift Digital
 
-<p className="text-gray-400 mb-10">
-Advanced AI visibility analytics and competitor tracking coming soon.
-</p>
-
-<div className="bg-[#141416] p-10 rounded-xl border border-[#222] inline-block">
-
-<div className="text-4xl font-bold mb-4">
-Launching Soon
-</div>
-
-<button className="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg transition">
-Join Early Access
-</button>
-
-</div>
-
-</section>
+</footer>
 
 </div>
 
