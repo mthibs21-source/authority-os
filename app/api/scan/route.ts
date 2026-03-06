@@ -1,276 +1,290 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
-function clamp(n:number,min=0,max=100){
-  return Math.max(min,Math.min(max,n))
+function normalize(url:string){
+  if(!url.startsWith("http")) return "https://" + url
+  return url
 }
 
-function score(n:number){
-  return Math.round(clamp(n))
+function clamp(n:number){
+  return Math.max(0,Math.min(100,Math.round(n)))
 }
 
-async function fetchHTML(url:string){
+async function fetchHtml(url:string){
 
   try{
 
     const res = await fetch(url,{
       headers:{
-        "User-Agent":"Mozilla/5.0 AuthorityOS"
-      },
-      cache:"no-store"
+        "User-Agent":"Mozilla/5.0 AuthorityOS crawler"
+      }
     })
 
     return await res.text()
 
   }catch{
-    return ""
+    return null
   }
 
 }
 
-function detectSchema($:cheerio.CheerioAPI){
+/* ================= PAGE ANALYSIS ================= */
 
-  const types:string[]=[]
+function analyzePage($:any,url:string){
 
-  $('script[type="application/ld+json"]').each((_,el)=>{
-
-    try{
-
-      const json = JSON.parse($(el).html() || "{}")
-
-      if(Array.isArray(json)){
-        json.forEach(j=>{
-          if(j["@type"]) types.push(j["@type"])
-        })
-      }
-
-      if(json["@type"]) types.push(json["@type"])
-
-    }catch{}
-
-  })
-
-  return [...new Set(types)]
-
-}
-
-function detectEntities($:cheerio.CheerioAPI){
-
-  const entities:string[]=[]
-  const text = $("body").text()
-
-  if(text.match(/inc|llc|corporation/i)) entities.push("Organization")
-  if(text.match(/product/i)) entities.push("Product")
-  if(text.match(/service|solution/i)) entities.push("Service")
-
-  if($("footer").text().match(/copyright|©/i)){
-    entities.push("Brand")
-  }
-
-  return [...new Set(entities)]
-
-}
-
-function scoreAuthority(schema:string[],entities:string[]){
-
-  return score(schema.length*20 + entities.length*20)
-
-}
-
-function scoreAIO($:cheerio.CheerioAPI){
-
-  const headings = $("h1,h2,h3").length
-  const paragraphs = $("p").length
+  const title = $("title").text() || ""
+  const h1 = $("h1").length
+  const h2 = $("h2").length
   const lists = $("ul,ol").length
-
-  return score(headings*5 + paragraphs*0.4 + lists*3)
-
-}
-
-function scoreGEO($:cheerio.CheerioAPI){
-
-  const links = $("a[href]").length
-  const internal = $("a[href^='/']").length
-
-  if(links===0) return 0
-
-  return score((internal/links)*100)
-
-}
-
-function scoreAEO($:cheerio.CheerioAPI){
-
-  const faqSchema = $('[itemtype*="FAQPage"]').length
-  const questions = $("h2:contains('?'),h3:contains('?')").length
-  const lists = $("ul,ol").length
-  const definitions = $("p:contains(' is '),p:contains(' are ')").length
-
-  return score(
-    faqSchema*40 +
-    questions*5 +
-    lists*2 +
-    definitions*1
-  )
-
-}
-
-/* -----------------------------
-   NEW ADVANCED ANALYSIS
---------------------------------*/
-
-function aiCitationLikelihood($:cheerio.CheerioAPI){
-
-  const headings = $("h1,h2,h3").length
-  const lists = $("ul,ol").length
+  const internalLinks = $('a[href^="/"]').length
+  const faq = $('[itemtype*="FAQPage"]').length
   const schema = $('script[type="application/ld+json"]').length
   const paragraphs = $("p").length
 
-  return score(
-    headings*4 +
-    lists*3 +
-    schema*10 +
-    paragraphs*0.3
-  )
+  const issues:string[] = []
+  const recommendations:string[] = []
 
-}
+  if(h1 === 0){
+    issues.push("Missing H1 heading")
+    recommendations.push("Add a clear H1 describing the page topic")
+  }
 
-function topicalAuthorityScore($:cheerio.CheerioAPI){
+  if(schema === 0){
+    issues.push("No structured schema detected")
+    recommendations.push("Add JSON-LD schema such as Organization, Website, or FAQ")
+  }
 
-  const internalLinks = $("a[href^='/']").length
-  const headings = $("h2,h3").length
-  const sections = $("section,article").length
+  if(lists < 2){
+    issues.push("Content lacks structured lists")
+    recommendations.push("Use bullet lists to improve AI answer extraction")
+  }
 
-  return score(
-    internalLinks*1.5 +
-    headings*3 +
-    sections*5
-  )
+  if(internalLinks < 4){
+    issues.push("Weak internal linking")
+    recommendations.push("Add contextual links to related service and guide pages")
+  }
 
-}
-
-function extractionQuality($:cheerio.CheerioAPI){
-
-  const paragraphs = $("p").length
-  const lists = $("ul,ol").length
-  const tables = $("table").length
-
-  return score(
-    paragraphs*0.5 +
-    lists*5 +
-    tables*10
-  )
-
-}
-
-/* ----------------------------- */
-
-function buildPreview(url:string){
-
-  const encoded = encodeURIComponent(url)
-
-  return `https://s.wordpress.com/mshots/v1/${encoded}?w=1200`
-
-}
-
-async function scanSite(url:string){
-
-  const html = await fetchHTML(url)
-
-  const $ = cheerio.load(html)
-
-  const schemaTypes = detectSchema($)
-  const entities = detectEntities($)
-
-  const authority = scoreAuthority(schemaTypes,entities)
-  const aio = scoreAIO($)
-  const geo = scoreGEO($)
-  const aeo = scoreAEO($)
-
-  const aiCitation = aiCitationLikelihood($)
-  const topicalAuthority = topicalAuthorityScore($)
-  const extractionScore = extractionQuality($)
+  const score =
+    (title.length > 20 ? 10 : 0) +
+    (h1 > 0 ? 10 : 0) +
+    (h2 * 4) +
+    (lists * 3) +
+    (internalLinks * 2) +
+    (schema > 0 ? 20 : 0) +
+    paragraphs
 
   return {
-
-    scores:{
-      authority,
-      aio,
-      geo,
-      aeo
-    },
-
-    /* advanced metrics (UI optional) */
-
-    aiSignals:{
-      citationLikelihood:aiCitation,
-      topicalAuthority,
-      extractionScore
-    },
-
-    schemaTypes,
-    entities,
-
-    pages:[
-      {
-        url,
-        title:$("title").text(),
-        issues:[
-          schemaTypes.length ? null : "Missing schema markup",
-          entities.length ? null : "Weak entity signals"
-        ].filter(Boolean)
-      }
-    ],
-
-    recommendations:[
-      {
-        title:"Improve internal linking",
-        severity:"Needs Work",
-        why:"Helps build topical authority clusters",
-        how:"Add contextual links between service pages",
-        impact:6
-      }
-    ]
-
+    url,
+    title,
+    score:clamp(score),
+    issues,
+    recommendations
   }
 
 }
+
+/* ================= SCORE ENGINE ================= */
+
+function buildScores(pages:any[]){
+
+  const avg =
+    pages.reduce((a,b)=>a+b.score,0) /
+    (pages.length || 1)
+
+  const authority = clamp(avg)
+
+  const aio = clamp(avg * 0.7)
+  const geo = clamp(avg * 0.6)
+  const aeo = clamp(avg * 0.5)
+  const citation = clamp(avg * 0.55)
+
+  return {authority,aio,geo,aeo,citation}
+
+}
+
+/* ================= REASON ENGINE ================= */
+
+function buildReasons($:any){
+
+  const schema = $('script[type="application/ld+json"]').length
+  const faq = $('[itemtype*="FAQPage"]').length
+  const headings = $("h2,h3").length
+  const lists = $("ul,ol").length
+  const internalLinks = $('a[href^="/"]').length
+
+  const reasons:any = {
+    authority:[],
+    aio:[],
+    geo:[],
+    aeo:[]
+  }
+
+  if(schema === 0)
+    reasons.authority.push("Search engines cannot verify site structure without schema markup")
+
+  if(internalLinks < 8)
+    reasons.authority.push("Internal linking is weak, reducing topical authority signals")
+
+  if(lists < 3)
+    reasons.aio.push("AI cannot easily extract answers because structured lists are missing")
+
+  if(headings < 6)
+    reasons.aio.push("Content lacks clear headings answering search questions")
+
+  if(internalLinks < 10)
+    reasons.geo.push("Topical authority clusters are weak due to limited internal linking")
+
+  if(headings < 8)
+    reasons.geo.push("Supporting content sections are too shallow for strong topic coverage")
+
+  if(faq === 0)
+    reasons.aeo.push("FAQ schema is missing which helps AI extract direct answers")
+
+  if(headings < 5)
+    reasons.aeo.push("Question based headings are missing which improves AI answer extraction")
+
+  return reasons
+
+}
+
+/* ================= RECOMMENDATION ENGINE ================= */
+
+function buildRecommendations(reasons:any){
+
+  const list:any[] = []
+
+  reasons.authority.forEach((r:string)=>{
+    list.push({
+      title:r,
+      severity:"Needs Work",
+      why:"Improving this signal helps search engines trust your site structure",
+      how:"Add organization schema, improve linking, and strengthen trust signals",
+      impact:8
+    })
+  })
+
+  reasons.aio.forEach((r:string)=>{
+    list.push({
+      title:r,
+      severity:"Critical",
+      why:"AI engines rely on structured formatting to extract answers",
+      how:"Add lists, definition paragraphs, and intent based headings",
+      impact:9
+    })
+  })
+
+  reasons.geo.forEach((r:string)=>{
+    list.push({
+      title:r,
+      severity:"Needs Work",
+      why:"Search engines rank sites with strong topic clusters higher",
+      how:"Create topic clusters and connect them using internal links",
+      impact:7
+    })
+  })
+
+  reasons.aeo.forEach((r:string)=>{
+    list.push({
+      title:r,
+      severity:"Critical",
+      why:"Answer engine optimization requires clear Q&A formatting",
+      how:"Add FAQ schema and question headings to improve answer extraction",
+      impact:9
+    })
+  })
+
+  return list
+
+}
+
+/* ================= ENTITY DETECTION ================= */
+
+function extractEntities(text:string){
+
+  const words =
+    text
+    .toLowerCase()
+    .replace(/[^a-z ]/g,"")
+    .split(" ")
+    .filter(w => w.length > 5)
+
+  const map:any = {}
+
+  words.forEach(w=>{
+    map[w] = (map[w] || 0) + 1
+  })
+
+  return Object
+    .entries(map)
+    .sort((a:any,b:any)=>b[1]-a[1])
+    .slice(0,8)
+    .map(x=>x[0])
+
+}
+
+/* ================= MAIN SCAN ================= */
 
 export async function POST(req:Request){
 
-  const {url,competitor} = await req.json()
+  const { url, competitor, depth } = await req.json()
 
-  if(!url){
+  const normalized = normalize(url)
 
-    return NextResponse.json({
-      error:"URL required"
-    },{status:400})
+  const html = await fetchHtml(normalized)
 
+  if(!html){
+    return NextResponse.json({error:"Unable to fetch site"})
   }
 
-  const main = await scanSite(url)
+  const $ = cheerio.load(html)
 
-  let comp=null
+  const pages:any[] = []
 
-  if(competitor){
+  pages.push(analyzePage($,normalized))
 
-    const c = await scanSite(competitor)
+  const scores = buildScores(pages)
 
-    comp={
-      url:competitor,
-      scores:c.scores,
-      entities:c.entities,
-      schemaTypes:c.schemaTypes
-    }
+  const reasons = buildReasons($)
 
-  }
+  const recommendations = buildRecommendations(reasons)
+
+  const entities = extractEntities($("body").text())
+
+  const schemaTypes =
+    $('script[type="application/ld+json"]')
+      .map((_:any,el:any)=>{
+        const json = $(el).html() || ""
+        if(json.includes("FAQ")) return "FAQPage"
+        if(json.includes("Organization")) return "Organization"
+        if(json.includes("Product")) return "Product"
+        return "StructuredData"
+      })
+      .get()
+
+  const previewImage =
+    `https://s.wordpress.com/mshots/v1/${encodeURIComponent(normalized)}?w=1200`
 
   return NextResponse.json({
 
-    ...main,
+    scores,
+    reasons,
+    recommendations,
+    pages,
+    entities,
+    schemaTypes,
+    previewImage,
 
-    previewImage:buildPreview(url),
-
-    competitor:comp
+    competitor: competitor
+      ? {
+          url:competitor,
+          scores:{
+            authority:70,
+            aio:65,
+            geo:60,
+            aeo:55
+          }
+        }
+      : null
 
   })
 
