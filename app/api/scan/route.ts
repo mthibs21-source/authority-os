@@ -1,299 +1,387 @@
 import { NextResponse } from "next/server"
 
-function normalize(url: string) {
-  if (!url) return ""
-  if (!url.startsWith("http")) return "https://" + url
+/* -----------------------------
+HELPERS
+----------------------------- */
+
+function normalize(url:string){
+  if(!url) return ""
+  if(!url.startsWith("http")) return "https://" + url
   return url
 }
 
-function clamp(n: number) {
-  return Math.max(0, Math.min(100, Math.round(n)))
+function clamp(n:number){
+  return Math.max(0,Math.min(100,Math.round(n)))
 }
 
-async function fetchHtml(url: string) {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 AuthorityOS Scanner"
-      }
+async function fetchHtml(url:string){
+  try{
+    const res = await fetch(url,{
+      headers:{ "User-Agent":"AuthorityOS crawler" }
     })
     return await res.text()
-  } catch {
+  }catch{
     return ""
   }
 }
 
-/* ------------------------------
-   SIGNAL DETECTION
---------------------------------*/
+/* -----------------------------
+CRAWL INTERNAL PAGES
+----------------------------- */
 
-function detectSignals(html: string) {
+async function crawlSite(startUrl:string,limit=4){
 
-  const text = html.replace(/<[^>]*>/g, " ")
-  const words = text.split(/\s+/).filter(Boolean)
+  const html = await fetchHtml(startUrl)
 
-  const signals = {
-    hasFAQSchema: html.includes("FAQPage"),
-    hasOpenGraph: html.includes("og:title"),
-    hasAltTags: html.includes("alt="),
-    hasLists: html.includes("<ul") || html.includes("<ol"),
-    hasAnswerHeadings: html.includes("?") && html.includes("<h"),
-    hasDefinitionBlocks: text.toLowerCase().includes(" is "),
-    hasLLMSTxt: html.includes("llms.txt"),
-    hasTopicClusters: html.includes("related") || html.includes("guide"),
-    internalLinks: (html.match(/href="\//g) || []).length,
-    wordCount: words.length
+  if(!html) return {pages:[],html}
+
+  const links = Array.from(
+    html.matchAll(/href="(\/[^"]*)"/g)
+  ).map(x=>x[1])
+
+  const unique = [...new Set(links)].slice(0,limit)
+
+  const pages:any[] = []
+
+  for(const link of unique){
+
+    const url = startUrl.replace(/\/$/,"") + link
+
+    const pageHtml = await fetchHtml(url)
+
+    pages.push({
+      url,
+      html:pageHtml
+    })
+
   }
 
-  return signals
+  return {pages,html}
+
 }
 
-/* ------------------------------
-   SCORE ENGINE
---------------------------------*/
+/* -----------------------------
+SIGNAL DETECTION
+----------------------------- */
 
-function buildScores(signals: any) {
+function detectSignals(html:string,pages:any[]){
+
+  const combined = html + pages.map(p=>p.html).join(" ")
+
+  const text = combined.replace(/<[^>]*>/g," ")
+
+  const words = text.split(/\s+/).filter(Boolean)
+
+  return {
+
+    hasFAQSchema: combined.includes("FAQPage"),
+
+    hasOpenGraph: combined.includes("og:title"),
+
+    hasAltTags: combined.includes("alt="),
+
+    hasLists:
+      combined.includes("<ul") ||
+      combined.includes("<ol"),
+
+    hasAnswerHeadings:
+      combined.includes("?") &&
+      combined.includes("<h"),
+
+    hasDefinitionBlocks:
+      text.toLowerCase().includes(" is "),
+
+    hasTopicClusters:
+      pages.length > 2,
+
+    hasLLMSTxt:
+      combined.includes("llms.txt"),
+
+    internalLinks:
+      (combined.match(/href="\//g)||[]).length,
+
+    wordCount: words.length,
+
+    pageCount: pages.length + 1
+
+  }
+
+}
+
+/* -----------------------------
+SCORE ENGINE
+----------------------------- */
+
+function buildScores(s:any){
 
   let authority = 50
   let aio = 40
   let geo = 40
   let aeo = 30
 
-  if (signals.hasOpenGraph) authority += 10
-  if (signals.internalLinks > 8) authority += 10
-  if (signals.wordCount > 800) authority += 10
+  if(s.hasOpenGraph) authority += 10
+  if(s.internalLinks > 10) authority += 10
+  if(s.wordCount > 800) authority += 10
+  if(s.pageCount > 2) authority += 10
 
-  if (signals.hasLists) aio += 10
-  if (signals.hasDefinitionBlocks) aio += 10
+  if(s.hasLists) aio += 10
+  if(s.hasDefinitionBlocks) aio += 10
 
-  if (signals.internalLinks > 10) geo += 10
-  if (signals.hasTopicClusters) geo += 10
+  if(s.internalLinks > 12) geo += 10
+  if(s.hasTopicClusters) geo += 10
 
-  if (signals.hasFAQSchema) aeo += 20
-  if (signals.hasAnswerHeadings) aeo += 10
+  if(s.hasFAQSchema) aeo += 20
+  if(s.hasAnswerHeadings) aeo += 10
 
   return {
-    authority: clamp(authority),
-    aio: clamp(aio),
-    geo: clamp(geo),
-    aeo: clamp(aeo)
+    authority:clamp(authority),
+    aio:clamp(aio),
+    geo:clamp(geo),
+    aeo:clamp(aeo)
   }
+
 }
 
-/* ------------------------------
-   REASONS
---------------------------------*/
+/* -----------------------------
+REASONS
+----------------------------- */
 
-function buildReasons(signals: any) {
+function buildReasons(s:any){
 
-  const reasons: any = {
-    authority: [],
-    aio: [],
-    geo: [],
-    aeo: []
+  const reasons:any={
+    authority:[],
+    aio:[],
+    geo:[],
+    aeo:[]
   }
 
-  if (!signals.hasOpenGraph)
+  if(!s.hasOpenGraph)
     reasons.authority.push("Missing Open Graph metadata")
 
-  if (signals.internalLinks < 8)
-    reasons.authority.push("Weak internal linking structure")
+  if(s.internalLinks<8)
+    reasons.authority.push("Weak internal linking")
 
-  if (!signals.hasLists)
+  if(!s.hasLists)
     reasons.aio.push("Content lacks structured lists")
 
-  if (!signals.hasDefinitionBlocks)
-    reasons.aio.push("Important terms lack clear definitions")
+  if(!s.hasDefinitionBlocks)
+    reasons.aio.push("Key terms lack clear definitions")
 
-  if (signals.internalLinks < 10)
-    reasons.geo.push("Weak topical cluster linking")
+  if(!s.hasTopicClusters)
+    reasons.geo.push("No strong topical clusters")
 
-  if (!signals.hasTopicClusters)
-    reasons.geo.push("Content does not form topical clusters")
+  if(s.internalLinks<10)
+    reasons.geo.push("Limited internal linking depth")
 
-  if (!signals.hasFAQSchema)
-    reasons.aeo.push("Missing FAQ schema markup")
+  if(!s.hasFAQSchema)
+    reasons.aeo.push("Missing FAQ structured data")
 
-  if (!signals.hasAnswerHeadings)
-    reasons.aeo.push("Pages lack question-based headings")
+  if(!s.hasAnswerHeadings)
+    reasons.aeo.push("Pages lack question headings")
 
   return reasons
+
 }
 
-/* ------------------------------
-   DETAILED RECOMMENDATIONS
---------------------------------*/
+/* -----------------------------
+RECOMMENDATIONS
+----------------------------- */
 
-function buildDetailedRecommendations(signals: any) {
+function buildRecommendations(s:any){
 
-  const recs: any[] = []
+  const recs:any[]=[]
 
-  if (!signals.hasFAQSchema) {
+  if(!s.hasFAQSchema){
+
     recs.push({
-      category: "AEO",
-      title: "Add FAQ Schema",
-      why: "AI engines extract direct answers from structured FAQ blocks.",
-      how: [
-        "Create a FAQ section with 3-5 questions",
+      category:"AEO",
+      title:"Add FAQ Schema",
+      why:"AI engines extract answers directly from FAQ structured data.",
+      how:[
+        "Create FAQ sections with 3–5 questions",
         "Add JSON-LD FAQPage schema",
-        "Place the schema in the page head or footer"
+        "Place schema in page head"
       ],
-      impact: "+12 AEO score"
+      impact:"+12 AEO score"
     })
+
   }
 
-  if (!signals.hasAnswerHeadings) {
+  if(!s.hasAnswerHeadings){
+
     recs.push({
-      category: "AEO",
-      title: "Use Question Headings",
-      why: "AI answer engines prioritize content formatted as questions and answers.",
-      how: [
-        "Add headings like 'What is...' or 'How does...'",
-        "Follow each heading with a short answer paragraph"
+      category:"AEO",
+      title:"Use Question Headings",
+      why:"AI search systems prefer question-based headings.",
+      how:[
+        "Add headings like 'What is…'",
+        "Follow with concise answers"
       ],
-      impact: "+8 AEO score"
+      impact:"+8 AEO score"
     })
+
   }
 
-  if (!signals.hasLists) {
+  if(!s.hasLists){
+
     recs.push({
-      category: "AIO",
-      title: "Add Structured Lists",
-      why: "AI systems extract information easier from bullet lists.",
-      how: [
+      category:"AIO",
+      title:"Add Structured Lists",
+      why:"AI systems extract information easier from lists.",
+      how:[
         "Convert sections into bullet lists",
-        "Use numbered steps for processes"
+        "Use numbered steps"
       ],
-      impact: "+10 AIO score"
+      impact:"+10 AIO score"
     })
+
   }
 
-  if (!signals.hasDefinitionBlocks) {
+  if(!s.hasDefinitionBlocks){
+
     recs.push({
-      category: "AIO",
-      title: "Add Definition Sentences",
-      why: "AI models prefer clear concept definitions.",
-      how: [
-        "Define key terms clearly",
-        "Example: 'AuthorityOS is an AI search authority scanner.'"
+      category:"AIO",
+      title:"Add Definition Sentences",
+      why:"AI models rely on clear definitions.",
+      how:[
+        "Define important terms",
+        "Use simple explanatory sentences"
       ],
-      impact: "+7 AIO score"
+      impact:"+7 AIO score"
     })
+
   }
 
-  if (signals.internalLinks < 8) {
+  if(s.internalLinks<8){
+
     recs.push({
-      category: "GEO",
-      title: "Improve Internal Linking",
-      why: "Search engines build topical authority through internal links.",
-      how: [
-        "Link related pages together",
-        "Add contextual anchor text"
+      category:"GEO",
+      title:"Improve Internal Linking",
+      why:"Internal links build topical authority clusters.",
+      how:[
+        "Link related content together",
+        "Use descriptive anchor text"
       ],
-      impact: "+10 GEO score"
+      impact:"+10 GEO score"
     })
+
   }
 
-  if (!signals.hasTopicClusters) {
+  if(!s.hasTopicClusters){
+
     recs.push({
-      category: "GEO",
-      title: "Create Topic Clusters",
-      why: "Topical clusters increase entity authority.",
-      how: [
+      category:"GEO",
+      title:"Create Topic Clusters",
+      why:"Search engines reward deep topic coverage.",
+      how:[
         "Create pillar pages",
         "Add supporting topic articles"
       ],
-      impact: "+12 GEO score"
+      impact:"+12 GEO score"
     })
+
   }
 
-  if (!signals.hasAltTags) {
+  if(!s.hasAltTags){
+
     recs.push({
-      category: "SEO",
-      title: "Add Image Alt Tags",
-      why: "Alt attributes help search engines understand images.",
-      how: [
-        "Add descriptive alt attributes",
-        "Include relevant keywords naturally"
+      category:"SEO",
+      title:"Add Alt Tags to Images",
+      why:"Alt attributes help search engines understand images.",
+      how:[
+        "Add descriptive alt text",
+        "Include relevant keywords"
       ],
-      impact: "+5 SEO score"
+      impact:"+5 SEO score"
     })
+
   }
 
-  if (signals.wordCount < 600) {
+  if(s.wordCount<600){
+
     recs.push({
-      category: "SEO",
-      title: "Increase Content Depth",
-      why: "Pages with deeper content rank higher.",
-      how: [
-        "Expand page to 800-1500 words",
-        "Add examples and supporting sections"
+      category:"SEO",
+      title:"Increase Content Depth",
+      why:"Longer content builds topical authority.",
+      how:[
+        "Expand pages to 800–1500 words",
+        "Add supporting sections"
       ],
-      impact: "+9 SEO score"
+      impact:"+9 SEO score"
     })
+
   }
 
-  if (!signals.hasOpenGraph) {
+  if(!s.hasOpenGraph){
+
     recs.push({
-      category: "SEO",
-      title: "Add Open Graph Metadata",
-      why: "Improves social sharing and crawl signals.",
-      how: [
+      category:"SEO",
+      title:"Add Open Graph Metadata",
+      why:"Improves social sharing and crawl signals.",
+      how:[
         "Add og:title",
         "Add og:description",
         "Add og:image"
       ],
-      impact: "+3 SEO score"
+      impact:"+3 SEO score"
     })
+
   }
 
   return recs
+
 }
 
-/* ------------------------------
-   ENTITY EXTRACTION
---------------------------------*/
+/* -----------------------------
+ENTITY EXTRACTION
+----------------------------- */
 
-function extractEntities(html: string) {
+function extractEntities(html:string){
 
-  const text = html.replace(/<[^>]*>/g, " ").toLowerCase()
-  const words = text.split(/\s+/).filter(w => w.length > 6)
+  const text = html.replace(/<[^>]*>/g," ").toLowerCase()
 
-  const freq: any = {}
+  const words = text.split(/\s+/).filter(w=>w.length>6)
 
-  words.forEach(w => {
-    freq[w] = (freq[w] || 0) + 1
+  const freq:any={}
+
+  words.forEach(w=>{
+    freq[w]=(freq[w]||0)+1
   })
 
   return Object.entries(freq)
-    .sort((a: any, b: any) => b[1] - a[1])
-    .slice(0, 6)
-    .map(x => x[0])
+    .sort((a:any,b:any)=>b[1]-a[1])
+    .slice(0,6)
+    .map(x=>x[0])
+
 }
 
-/* ------------------------------
-   MAIN ROUTE
---------------------------------*/
+/* -----------------------------
+MAIN API
+----------------------------- */
 
-export async function POST(req: Request) {
+export async function POST(req:Request){
 
-  const { url, competitor } = await req.json()
+  const {url,competitor}=await req.json()
 
   const normalized = normalize(url)
 
-  const html = await fetchHtml(normalized)
+  const {pages,html}=await crawlSite(normalized)
 
-  if (!html) {
-    return NextResponse.json({ error: "Failed to fetch website" })
+  if(!html){
+
+    return NextResponse.json({
+      error:"Failed to fetch site"
+    })
+
   }
 
-  const signals = detectSignals(html)
+  const signals = detectSignals(html,pages)
 
   const scores = buildScores(signals)
 
   const reasons = buildReasons(signals)
 
-  const recommendations = buildDetailedRecommendations(signals)
+  const recommendations = buildRecommendations(signals)
 
   const entities = extractEntities(html)
 
@@ -301,11 +389,28 @@ export async function POST(req: Request) {
     `https://s.wordpress.com/mshots/v1/${encodeURIComponent(normalized)}?w=1200`
 
   return NextResponse.json({
+
     scores,
+
     reasons,
+
     recommendations,
+
+    pages:pages.map(p=>({
+      url:p.url,
+      issues:[]
+    })),
+
     entities,
+
+    schemaTypes:signals.hasFAQSchema
+      ? ["FAQPage","Organization"]
+      : ["Organization"],
+
     previewImage,
+
     competitor: competitor || null
+
   })
+
 }
