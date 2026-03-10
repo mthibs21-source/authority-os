@@ -4,210 +4,253 @@ import { useState } from "react"
 
 export default function Home() {
 
-  const [url,setUrl] = useState("")
-  const [competitor,setCompetitor] = useState("")
-  const [data,setData] = useState<any>(null)
-  const [loading,setLoading] = useState(false)
+  const [website, setWebsite] = useState("")
+  const [competitor, setCompetitor] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [results, setResults] = useState<any>(null)
 
-  async function scan(){
+  const runScan = async () => {
+
+    if (!website) return
 
     setLoading(true)
 
-    const res = await fetch("/api/scan",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json"},
-      body:JSON.stringify({url,competitor})
-    })
+    try {
 
-    const json = await res.json()
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          website,
+          competitor
+        })
+      })
 
-    setData(json)
+      const data = await res.json()
+
+      setResults(data)
+
+    } catch (error) {
+
+      console.error("Scan failed", error)
+
+    }
 
     setLoading(false)
-
   }
 
-  return(
+  return (
 
-    <main className="min-h-screen bg-[#020617] text-white">
+    <main className="min-h-screen bg-[#030712] text-white px-6">
 
-      <div className="max-w-7xl mx-auto p-8">
+      {/* HERO */}
 
-        {/* HEADER */}
+      <section className="max-w-6xl mx-auto pt-24 pb-16">
 
-        <div className="text-[#eaff00] font-semibold mb-12">
-          AI Visibility Scanner
+        <h1 className="text-5xl font-bold leading-tight">
+          Will ChatGPT Recommend Your Website?
+        </h1>
+
+        <p className="text-gray-400 mt-6 max-w-xl">
+          Traditional SEO is no longer enough. AuthorityOS scans how AI search
+          engines understand your website and shows exactly what prevents your
+          pages from being trusted and cited.
+        </p>
+
+        {/* INPUTS */}
+
+        <div className="mt-10 flex flex-col md:flex-row gap-4">
+
+          <input
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            placeholder="Enter your website"
+            className="bg-[#111827] border border-[#1f2937] rounded-lg px-4 py-3 w-full"
+          />
+
+          <input
+            value={competitor}
+            onChange={(e) => setCompetitor(e.target.value)}
+            placeholder="Competitor (optional)"
+            className="bg-[#111827] border border-[#1f2937] rounded-lg px-4 py-3 w-full"
+          />
+
+          <button
+            onClick={runScan}
+            className="bg-yellow-400 text-black px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition"
+          >
+            {loading ? "Scanning..." : "Run Scan"}
+          </button>
+
         </div>
 
+      </section>
 
-        {/* HERO */}
+      {/* EXAMPLE SECTION */}
 
-        <div className="grid grid-cols-2 gap-16 items-center mb-20">
+      <section className="max-w-6xl mx-auto mt-20 grid md:grid-cols-2 gap-10">
 
-          <div>
+        <div className="bg-[#0b1220] p-8 rounded-xl border border-[#1f2937]">
 
-            <h1 className="text-6xl font-bold leading-tight mb-6">
+          <h3 className="text-2xl font-semibold mb-4">
+            What AuthorityOS analyzes
+          </h3>
 
-              Will <span className="text-[#eaff00]">ChatGPT</span><br/>
+          <ul className="space-y-3 text-gray-400">
 
-              Recommend<br/>
+            <li>• Entity signals AI uses to identify your brand</li>
+            <li>• Schema and structured data coverage</li>
+            <li>• Topical authority signals</li>
+            <li>• Whether AI engines can extract answers from your content</li>
+            <li>• Competitor authority comparison</li>
 
-              Your Website?
+          </ul>
 
-            </h1>
+        </div>
 
-            <p className="text-gray-400 text-lg mb-8 max-w-xl">
+        <div className="bg-[#0b1220] p-8 rounded-xl border border-[#1f2937]">
 
-              AI search engines like ChatGPT, Gemini, and Perplexity now
-              recommend businesses directly to users.
+          <h3 className="text-2xl font-semibold mb-4">
+            Example Scan Result
+          </h3>
 
-              This scanner shows whether AI trusts your website,
-              where you're losing visibility, and exactly what to fix
-              so AI starts recommending you.
+          <div className="space-y-3 text-gray-400">
 
+            <p>
+              Authority Score: <span className="text-green-400">82</span>
             </p>
 
-            <div className="flex flex-wrap gap-3 mb-10 text-sm">
+            <p>
+              AIO Score: <span className="text-yellow-400">61</span>
+            </p>
 
-              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
-                AI trust signals
-              </div>
+            <p>
+              GEO Score: <span className="text-red-400">38</span>
+            </p>
 
-              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
-                Schema & entity detection
-              </div>
-
-              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
-                Competitor comparison
-              </div>
-
-              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
-                Recommendation likelihood
-              </div>
-
-            </div>
-
-
-            {/* SCAN BAR */}
-
-            <div className="flex gap-3">
-
-              <input
-                placeholder="Enter website"
-                value={url}
-                onChange={(e)=>setUrl(e.target.value)}
-                className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
-              />
-
-              <input
-                placeholder="Competitor"
-                value={competitor}
-                onChange={(e)=>setCompetitor(e.target.value)}
-                className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
-              />
-
-              <button
-                onClick={scan}
-                className="bg-[#eaff00] text-black px-6 rounded font-semibold"
-              >
-                {loading ? "Scanning..." : "Scan"}
-              </button>
-
-            </div>
+            <p>
+              AEO Score: <span className="text-red-400">22</span>
+            </p>
 
           </div>
 
-
-          {/* RIGHT PANEL */}
-
-          <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-8">
-
-            <div className="text-gray-400 mb-6">
-              What you'll discover
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-
-              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
-
-                <div className="font-semibold">
-                  AI Trust Score
-                </div>
-
-                <div className="text-gray-400 text-sm">
-                  See if AI trusts your site enough to recommend it
-                </div>
-
-              </div>
-
-              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
-
-                <div className="font-semibold">
-                  Why AI Doesn't Recommend You
-                </div>
-
-                <div className="text-gray-400 text-sm">
-                  The missing signals AI uses to decide trust
-                </div>
-
-              </div>
-
-              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
-
-                <div className="font-semibold">
-                  Pages Holding You Back
-                </div>
-
-                <div className="text-gray-400 text-sm">
-                  Which URLs weaken your AI visibility
-                </div>
-
-              </div>
-
-              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
-
-                <div className="font-semibold">
-                  How to Fix It
-                </div>
-
-                <div className="text-gray-400 text-sm">
-                  Clear steps to increase AI recommendation likelihood
-                </div>
-
-              </div>
-
-            </div>
-
-            <div className="text-gray-400 text-sm mb-2">
-              Example outcome
-            </div>
-
-            <div className="font-semibold mb-4">
-
-              Add organization schema, strengthen topical authority,
-              and expand FAQ answers so AI systems confidently
-              recommend your website.
-
-            </div>
-
-            <div className="w-full bg-[#1e293b] h-2 rounded">
-
-              <div className="bg-[#eaff00] h-2 rounded w-[60%]" />
-
-            </div>
-
-            <div className="text-gray-400 text-sm mt-2">
-              Potential AI visibility increase: +14%
-            </div>
-
+          <div className="mt-6 text-sm text-gray-500">
+            Top Fix: Add organization schema and improve internal linking
+            between service pages.
           </div>
 
         </div>
 
-      </div>
+      </section>
+
+      {/* RESULTS */}
+
+      {results && (
+
+        <section className="max-w-6xl mx-auto mt-24">
+
+          <h2 className="text-3xl font-bold mb-10">
+            Scan Results
+          </h2>
+
+          <div className="grid md:grid-cols-4 gap-6">
+
+            <Score
+              title="Authority"
+              value={results.scores.authority}
+              color="text-green-400"
+            />
+
+            <Score
+              title="AIO"
+              value={results.scores.aio}
+              color="text-yellow-400"
+            />
+
+            <Score
+              title="GEO"
+              value={results.scores.geo}
+              color="text-red-400"
+            />
+
+            <Score
+              title="AEO"
+              value={results.scores.aeo}
+              color="text-red-400"
+            />
+
+          </div>
+
+          {/* RECOMMENDATIONS */}
+
+          <div className="mt-16">
+
+            <h3 className="text-2xl font-semibold mb-6">
+              Recommended Fixes
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-6">
+
+              {results.recommendations.map((rec: any, i: number) => (
+
+                <div
+                  key={i}
+                  className="bg-[#0b1220] p-6 rounded-xl border border-[#1f2937]"
+                >
+
+                  <h4 className="font-semibold">
+                    {rec.title}
+                  </h4>
+
+                  <p className="text-sm text-gray-400 mt-2">
+                    Why it matters: {rec.reason}
+                  </p>
+
+                  <p className="text-sm text-gray-500 mt-2">
+                    Fix: {rec.fix}
+                  </p>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        </section>
+
+      )}
 
     </main>
+  )
+}
+
+function Score({
+  title,
+  value,
+  color
+}: {
+  title: string
+  value: number
+  color: string
+}) {
+
+  return (
+
+    <div className="bg-[#0b1220] border border-[#1f2937] p-6 rounded-xl text-center">
+
+      <h4 className="text-gray-400 text-sm">
+        {title}
+      </h4>
+
+      <div className={`text-4xl font-bold mt-2 ${color}`}>
+        {value}
+      </div>
+
+    </div>
 
   )
-
 }
