@@ -1,29 +1,26 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import React, { useState } from "react";
 
-export default function Home(){
+export default function AuthorityOS() {
 
-const [website,setWebsite] = useState("")
+const [url,setUrl] = useState("")
 const [competitor,setCompetitor] = useState("")
 const [loading,setLoading] = useState(false)
-const [results,setResults] = useState<any>(null)
+const [data,setData] = useState<any>(null)
 
-const runScan = async () => {
+async function runScan(){
 
-if(!website){
-alert("Enter a website")
-return
-}
+if(!url) return alert("Enter a website")
 
-let formatted = website
+setLoading(true)
+setData(null)
+
+let formatted = url
 
 if(!formatted.startsWith("http")){
 formatted = "https://" + formatted
 }
-
-setLoading(true)
-setResults(null)
 
 try{
 
@@ -38,13 +35,14 @@ competitor
 })
 })
 
-const data = await res.json()
+const json = await res.json()
 
-setResults(data)
+setData(json)
 
 }catch(err){
 
 console.error(err)
+alert("Scan failed")
 
 }
 
@@ -52,64 +50,73 @@ setLoading(false)
 
 }
 
-return(
+return (
 
-<main className="min-h-screen bg-black text-white">
+<div className="min-h-screen bg-[#070d18] text-white">
 
-<div className="max-w-6xl mx-auto px-8 py-16">
+{/* HERO */}
 
-<h1 className="text-5xl font-bold mb-6">
-Will ChatGPT Recommend Your Website?
+<div className="max-w-6xl mx-auto px-6 pt-20 pb-10">
+
+<h1 className="text-6xl font-extrabold leading-tight">
+Will <span className="text-[#eaff00]">ChatGPT Recommend</span> Your Website?
 </h1>
 
-<p className="text-gray-400 mb-12 max-w-2xl">
-AI search engines now recommend businesses directly. This scanner shows
-whether AI understands, trusts, and cites your website — and exactly what to fix.
+<p className="mt-6 text-slate-300 max-w-xl text-lg">
+AI search engines now recommend businesses directly.
+This scanner shows whether AI understands, trusts,
+and cites your website — and exactly what to fix.
 </p>
+
+</div>
 
 {/* SCAN INPUT */}
 
-<div className="flex gap-4 mb-16">
+<div className="max-w-6xl mx-auto px-6 pb-12">
+
+<div className="grid md:grid-cols-3 gap-4">
 
 <input
-value={website}
-onChange={(e)=>setWebsite(e.target.value)}
 placeholder="Your website"
-className="bg-neutral-900 border border-yellow-400 p-3 rounded w-full"
+value={url}
+onChange={(e)=>setUrl(e.target.value)}
+className="bg-[#070d18] border border-[#eaff00]/30 p-3 rounded"
 />
 
 <input
+placeholder="Competitor (optional)"
 value={competitor}
 onChange={(e)=>setCompetitor(e.target.value)}
-placeholder="Competitor (optional)"
-className="bg-neutral-900 border border-yellow-400 p-3 rounded w-full"
+className="bg-[#070d18] border border-[#eaff00]/30 p-3 rounded"
 />
 
 <button
 onClick={runScan}
-className="bg-[#eaff00] text-black px-8 font-semibold rounded"
+className="bg-[#eaff00] text-black font-bold rounded"
 >
-{loading ? "Scanning..." : "Run Scan"}
+{loading ? "Analyzing..." : "Run Scan"}
 </button>
 
 </div>
 
-{/* EXAMPLE DASHBOARD */}
+</div>
 
-{!results && (
+{/* EXAMPLE RESULT BEFORE SCAN */}
 
-<div className="mb-20">
+{!data && (
 
-<h2 className="text-2xl font-semibold mb-6">
-Example Scan Result
+<div className="max-w-6xl mx-auto px-6 pb-20">
+
+<h2 className="text-2xl font-bold mb-8">
+Example Scan Output
 </h2>
 
-<div className="grid grid-cols-4 gap-6">
+<div className="grid md:grid-cols-4 gap-6">
 
-<Score title="Authority" value="82"/>
-<Score title="AIO" value="64"/>
-<Score title="GEO" value="48"/>
-<Score title="AEO" value="22"/>
+<Score label="Authority" score={82}/>
+<Score label="AIO" score={67}/>
+<Score label="GEO" score={44}/>
+<Score label="AEO" score={25}/>
 
 </div>
 
@@ -117,40 +124,25 @@ Example Scan Result
 
 <ExampleCard
 title="Add FAQ schema"
-desc="AI search engines extract direct answers from structured question content."
+desc="AI search engines extract direct answers from structured question sections."
 />
 
 <ExampleCard
 title="Improve internal linking"
-desc="Entity clusters help AI understand topical authority."
+desc="Topical clusters increase entity authority for AI systems."
 />
 
 <ExampleCard
-title="Add organization schema"
-desc="This helps AI engines clearly identify your brand entity."
+title="Add Organization schema"
+desc="AI models rely heavily on structured entity markup."
 />
 
 <ExampleCard
-title="Strengthen service pages"
-desc="AI answers often cite pages with strong headings and answer sections."
+title="Expand service page content"
+desc="AI answers typically cite authoritative long form pages."
 />
 
 </div>
-
-</div>
-
-)}
-
-{/* LOADING */}
-
-{loading && (
-
-<div className="text-gray-400 space-y-2 mb-10">
-
-<p>Analyzing entities...</p>
-<p>Checking schema...</p>
-<p>Mapping internal links...</p>
-<p>Evaluating AI extraction...</p>
 
 </div>
 
@@ -158,16 +150,16 @@ desc="AI answers often cite pages with strong headings and answer sections."
 
 {/* RESULTS */}
 
-{results && (
+{data && (
 
-<div className="space-y-16">
+<div className="max-w-6xl mx-auto px-6 pb-20 space-y-12">
 
-<div className="grid grid-cols-4 gap-6">
+<div className="grid md:grid-cols-4 gap-6">
 
-<Score title="Authority" value={results.scores.authority}/>
-<Score title="AIO" value={results.scores.aio}/>
-<Score title="GEO" value={results.scores.geo}/>
-<Score title="AEO" value={results.scores.aeo}/>
+<Score label="Authority" score={data.scores.authority}/>
+<Score label="AIO" score={data.scores.aio}/>
+<Score label="GEO" score={data.scores.geo}/>
+<Score label="AEO" score={data.scores.aeo}/>
 
 </div>
 
@@ -175,16 +167,16 @@ desc="AI answers often cite pages with strong headings and answer sections."
 
 <div>
 
-<h2 className="text-xl mb-6">
+<h2 className="text-2xl font-bold mb-6">
 Recommended Improvements
 </h2>
 
 <div className="grid md:grid-cols-2 gap-6">
 
-{results.recommendations.map((r:any,i:number)=>(
-<div key={i} className="bg-neutral-900 border border-yellow-400 p-6 rounded">
+{data.recommendations.map((r:any,i:number)=>(
+<div key={i} className="bg-[#111a2b] border border-[#eaff00]/25 p-6 rounded">
 
-<div className="text-yellow-400 font-semibold mb-2">
+<div className="text-[#eaff00] text-sm mb-2">
 {r.category}
 </div>
 
@@ -192,11 +184,11 @@ Recommended Improvements
 {r.title}
 </div>
 
-<div className="text-gray-400 text-sm mb-2">
+<div className="text-slate-300 text-sm mb-2">
 {r.reason}
 </div>
 
-<div className="text-sm">
+<div className="text-sm text-white">
 Fix: {r.fix}
 </div>
 
@@ -213,42 +205,60 @@ Fix: {r.fix}
 
 </div>
 
-</main>
-
 )
-
 }
 
-function Score({title,value}:{title:string,value:any}){
+function Score({label,score}:{label:string,score:number}){
+
+let tier = "Needs Work"
+let color = "text-orange-300"
+
+if(score >= 75){
+tier = "Strong"
+color = "text-green-400"
+}
+
+if(score < 45){
+tier = "Critical"
+color = "text-red-400"
+}
 
 return(
-<div className="bg-neutral-900 border border-yellow-400 p-6 rounded text-center">
 
-<div className="text-gray-400 text-sm mb-2">
-{title}
+<div className="bg-[#111a2b] border border-white/10 p-6 rounded text-center">
+
+<div className="text-sm text-slate-300 mb-2">
+{label}
 </div>
 
-<div className="text-3xl font-bold text-yellow-400">
-{value}
+<div className={`text-4xl font-bold ${color}`}>
+{score}
+</div>
+
+<div className="text-xs text-slate-400 mt-1">
+{tier}
 </div>
 
 </div>
+
 )
 }
 
 function ExampleCard({title,desc}:{title:string,desc:string}){
 
 return(
-<div className="bg-neutral-900 border border-yellow-400 p-6 rounded">
 
-<div className="font-semibold mb-2 text-yellow-400">
+<div className="bg-[#111a2b] border border-[#eaff00]/25 p-6 rounded">
+
+<div className="font-semibold text-[#eaff00] mb-2">
 {title}
 </div>
 
-<div className="text-gray-400 text-sm">
+<div className="text-slate-300 text-sm">
 {desc}
 </div>
 
 </div>
+
 )
 }
