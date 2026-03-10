@@ -14,13 +14,12 @@ return await res.text()
 }catch{
 
 return ""
+
 }
 
 }
 
 export async function POST(req:Request){
-
-try{
 
 const { website } = await req.json()
 
@@ -28,9 +27,8 @@ const html = await fetchHTML(website)
 
 const $ = cheerio.load(html)
 
-let schemaCount = $('script[type="application/ld+json"]').length
-
-let faq = $("h2:contains('FAQ'),h3:contains('FAQ')").length > 0
+const schemaCount = $('script[type="application/ld+json"]').length
+const faq = $("h2:contains('FAQ'),h3:contains('FAQ')").length > 0
 
 let internalLinks = 0
 
@@ -52,43 +50,43 @@ const recommendations = [
 {
 category:"AEO",
 title:"Add FAQ content",
-reason:"Answer engines extract structured Q&A sections",
-fix:"Add FAQ sections and FAQ schema markup"
+reason:"Answer engines extract structured Q&A blocks",
+fix:"Add FAQ sections and FAQ schema"
 },
 
 {
 category:"AIO",
-title:"Add organization schema",
-reason:"AI engines rely on structured entity data",
-fix:"Add Organization schema to your homepage"
+title:"Add Organization schema",
+reason:"AI engines rely on entity markup to understand brands",
+fix:"Add JSON-LD Organization schema"
 },
 
 {
 category:"GEO",
 title:"Improve internal linking",
-reason:"AI authority is built through topic clusters",
-fix:"Link related pages and services together"
+reason:"Topic clusters strengthen AI authority mapping",
+fix:"Link service pages together"
 },
 
 {
 category:"SEO",
-title:"Add H2 answer headings",
-reason:"AI extracts answers from well structured headings",
-fix:"Add direct question headings for key topics"
-},
-
-{
-category:"SEO",
-title:"Increase content depth",
-reason:"AI citations prefer authoritative long form pages",
-fix:"Expand service pages with 800+ words"
+title:"Improve heading structure",
+reason:"AI extracts answers from headings and short paragraphs",
+fix:"Add H2 question headings"
 },
 
 {
 category:"Authority",
-title:"Create topical clusters",
-reason:"Authority comes from topic coverage",
-fix:"Create supporting blog content around core services"
+title:"Increase topical coverage",
+reason:"AI prefers sites with strong topic clusters",
+fix:"Publish related articles supporting core services"
+},
+
+{
+category:"AEO",
+title:"Add question-based content",
+reason:"LLMs extract answers from conversational content",
+fix:"Add sections answering common questions"
 }
 
 ]
@@ -105,11 +103,5 @@ aeo:Math.round(aeo)
 recommendations
 
 })
-
-}catch{
-
-return NextResponse.json({error:"Scan failed"})
-
-}
 
 }
