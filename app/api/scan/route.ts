@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server"
 
-/* -----------------------------
-HELPERS
------------------------------ */
-
 function normalize(url:string){
   if(!url) return ""
   if(!url.startsWith("http")) return "https://" + url
@@ -17,7 +13,7 @@ function clamp(n:number){
 async function fetchHtml(url:string){
   try{
     const res = await fetch(url,{
-      headers:{ "User-Agent":"AuthorityOS crawler" }
+      headers:{ "User-Agent":"AuthorityOS crawler"}
     })
     return await res.text()
   }catch{
@@ -25,92 +21,47 @@ async function fetchHtml(url:string){
   }
 }
 
-/* -----------------------------
-CRAWL INTERNAL PAGES
------------------------------ */
-
-async function crawlSite(startUrl:string,limit=4){
-
-  const html = await fetchHtml(startUrl)
-
-  if(!html) return {pages:[],html}
-
-  const links = Array.from(
-    html.matchAll(/href="(\/[^"]*)"/g)
-  ).map(x=>x[1])
-
-  const unique = [...new Set(links)].slice(0,limit)
-
-  const pages:any[] = []
-
-  for(const link of unique){
-
-    const url = startUrl.replace(/\/$/,"") + link
-
-    const pageHtml = await fetchHtml(url)
-
-    pages.push({
-      url,
-      html:pageHtml
-    })
-
-  }
-
-  return {pages,html}
-
-}
-
-/* -----------------------------
+/* ------------------------
 SIGNAL DETECTION
------------------------------ */
+------------------------ */
 
-function detectSignals(html:string,pages:any[]){
+function detectSignals(html:string){
 
-  const combined = html + pages.map(p=>p.html).join(" ")
-
-  const text = combined.replace(/<[^>]*>/g," ")
+  const text = html.replace(/<[^>]*>/g," ")
 
   const words = text.split(/\s+/).filter(Boolean)
 
   return {
 
-    hasFAQSchema: combined.includes("FAQPage"),
+    hasFAQSchema: html.includes("FAQPage"),
 
-    hasOpenGraph: combined.includes("og:title"),
+    hasOpenGraph: html.includes("og:title"),
 
-    hasAltTags: combined.includes("alt="),
+    hasAltTags: html.includes("alt="),
 
     hasLists:
-      combined.includes("<ul") ||
-      combined.includes("<ol"),
+      html.includes("<ul") ||
+      html.includes("<ol"),
 
     hasAnswerHeadings:
-      combined.includes("?") &&
-      combined.includes("<h"),
+      html.includes("?") &&
+      html.includes("<h"),
 
     hasDefinitionBlocks:
       text.toLowerCase().includes(" is "),
 
-    hasTopicClusters:
-      pages.length > 2,
-
-    hasLLMSTxt:
-      combined.includes("llms.txt"),
-
     internalLinks:
-      (combined.match(/href="\//g)||[]).length,
+      (html.match(/href="\//g)||[]).length,
 
-    wordCount: words.length,
-
-    pageCount: pages.length + 1
+    wordCount: words.length
 
   }
 
 }
 
-/* -----------------------------
+/* ------------------------
 SCORE ENGINE
------------------------------ */
+------------------------ */
 
 function buildScores(s:any){
 
@@ -122,70 +73,27 @@ function buildScores(s:any){
   if(s.hasOpenGraph) authority += 10
   if(s.internalLinks > 10) authority += 10
   if(s.wordCount > 800) authority += 10
-  if(s.pageCount > 2) authority += 10
 
   if(s.hasLists) aio += 10
   if(s.hasDefinitionBlocks) aio += 10
 
   if(s.internalLinks > 12) geo += 10
-  if(s.hasTopicClusters) geo += 10
 
   if(s.hasFAQSchema) aeo += 20
   if(s.hasAnswerHeadings) aeo += 10
 
   return {
-    authority:clamp(authority),
-    aio:clamp(aio),
-    geo:clamp(geo),
-    aeo:clamp(aeo)
+    authority: clamp(authority),
+    aio: clamp(aio),
+    geo: clamp(geo),
+    aeo: clamp(aeo)
   }
 
 }
 
-/* -----------------------------
-REASONS
------------------------------ */
-
-function buildReasons(s:any){
-
-  const reasons:any={
-    authority:[],
-    aio:[],
-    geo:[],
-    aeo:[]
-  }
-
-  if(!s.hasOpenGraph)
-    reasons.authority.push("Missing Open Graph metadata")
-
-  if(s.internalLinks<8)
-    reasons.authority.push("Weak internal linking")
-
-  if(!s.hasLists)
-    reasons.aio.push("Content lacks structured lists")
-
-  if(!s.hasDefinitionBlocks)
-    reasons.aio.push("Key terms lack clear definitions")
-
-  if(!s.hasTopicClusters)
-    reasons.geo.push("No strong topical clusters")
-
-  if(s.internalLinks<10)
-    reasons.geo.push("Limited internal linking depth")
-
-  if(!s.hasFAQSchema)
-    reasons.aeo.push("Missing FAQ structured data")
-
-  if(!s.hasAnswerHeadings)
-    reasons.aeo.push("Pages lack question headings")
-
-  return reasons
-
-}
-
-/* -----------------------------
+/* ------------------------
 RECOMMENDATIONS
------------------------------ */
+------------------------ */
 
 function buildRecommendations(s:any){
 
@@ -199,25 +107,8 @@ function buildRecommendations(s:any){
       why:"AI engines extract answers directly from FAQ structured data.",
       how:[
         "Create FAQ sections with 3–5 questions",
-        "Add JSON-LD FAQPage schema",
-        "Place schema in page head"
-      ],
-      impact:"+12 AEO score"
-    })
-
-  }
-
-  if(!s.hasAnswerHeadings){
-
-    recs.push({
-      category:"AEO",
-      title:"Use Question Headings",
-      why:"AI search systems prefer question-based headings.",
-      how:[
-        "Add headings like 'What is…'",
-        "Follow with concise answers"
-      ],
-      impact:"+8 AEO score"
+        "Add JSON-LD FAQPage schema"
+      ]
     })
 
   }
@@ -229,101 +120,37 @@ function buildRecommendations(s:any){
       title:"Add Structured Lists",
       why:"AI systems extract information easier from lists.",
       how:[
-        "Convert sections into bullet lists",
+        "Convert paragraphs into bullet lists",
         "Use numbered steps"
-      ],
-      impact:"+10 AIO score"
+      ]
     })
 
   }
 
-  if(!s.hasDefinitionBlocks){
-
-    recs.push({
-      category:"AIO",
-      title:"Add Definition Sentences",
-      why:"AI models rely on clear definitions.",
-      how:[
-        "Define important terms",
-        "Use simple explanatory sentences"
-      ],
-      impact:"+7 AIO score"
-    })
-
-  }
-
-  if(s.internalLinks<8){
+  if(s.internalLinks < 8){
 
     recs.push({
       category:"GEO",
       title:"Improve Internal Linking",
-      why:"Internal links build topical authority clusters.",
+      why:"Internal linking builds topical authority clusters.",
       how:[
-        "Link related content together",
-        "Use descriptive anchor text"
-      ],
-      impact:"+10 GEO score"
+        "Link related pages",
+        "Add contextual anchor text"
+      ]
     })
 
   }
 
-  if(!s.hasTopicClusters){
-
-    recs.push({
-      category:"GEO",
-      title:"Create Topic Clusters",
-      why:"Search engines reward deep topic coverage.",
-      how:[
-        "Create pillar pages",
-        "Add supporting topic articles"
-      ],
-      impact:"+12 GEO score"
-    })
-
-  }
-
-  if(!s.hasAltTags){
-
-    recs.push({
-      category:"SEO",
-      title:"Add Alt Tags to Images",
-      why:"Alt attributes help search engines understand images.",
-      how:[
-        "Add descriptive alt text",
-        "Include relevant keywords"
-      ],
-      impact:"+5 SEO score"
-    })
-
-  }
-
-  if(s.wordCount<600){
+  if(s.wordCount < 600){
 
     recs.push({
       category:"SEO",
       title:"Increase Content Depth",
-      why:"Longer content builds topical authority.",
+      why:"Longer content improves topical authority.",
       how:[
-        "Expand pages to 800–1500 words",
-        "Add supporting sections"
-      ],
-      impact:"+9 SEO score"
-    })
-
-  }
-
-  if(!s.hasOpenGraph){
-
-    recs.push({
-      category:"SEO",
-      title:"Add Open Graph Metadata",
-      why:"Improves social sharing and crawl signals.",
-      how:[
-        "Add og:title",
-        "Add og:description",
-        "Add og:image"
-      ],
-      impact:"+3 SEO score"
+        "Expand page to 800–1500 words",
+        "Add examples and sections"
+      ]
     })
 
   }
@@ -332,9 +159,9 @@ function buildRecommendations(s:any){
 
 }
 
-/* -----------------------------
+/* ------------------------
 ENTITY EXTRACTION
------------------------------ */
+------------------------ */
 
 function extractEntities(html:string){
 
@@ -355,61 +182,73 @@ function extractEntities(html:string){
 
 }
 
-/* -----------------------------
-MAIN API
------------------------------ */
+/* ------------------------
+SCAN SITE
+------------------------ */
 
-export async function POST(req:Request){
+async function scanSite(url:string){
 
-  const {url,competitor}=await req.json()
+  const html = await fetchHtml(url)
 
-  const normalized = normalize(url)
+  if(!html) return null
 
-  const {pages,html}=await crawlSite(normalized)
-
-  if(!html){
-
-    return NextResponse.json({
-      error:"Failed to fetch site"
-    })
-
-  }
-
-  const signals = detectSignals(html,pages)
+  const signals = detectSignals(html)
 
   const scores = buildScores(signals)
-
-  const reasons = buildReasons(signals)
 
   const recommendations = buildRecommendations(signals)
 
   const entities = extractEntities(html)
 
+  return {
+    scores,
+    recommendations,
+    entities
+  }
+
+}
+
+/* ------------------------
+MAIN ROUTE
+------------------------ */
+
+export async function POST(req:Request){
+
+  const {url,competitor} = await req.json()
+
+  const siteUrl = normalize(url)
+  const competitorUrl = normalize(competitor)
+
+  const site = await scanSite(siteUrl)
+
+  if(!site){
+    return NextResponse.json({
+      error:"Failed to fetch site"
+    })
+  }
+
+  let competitorData = null
+
+  if(competitorUrl){
+
+    competitorData = await scanSite(competitorUrl)
+
+  }
+
   const previewImage =
-    `https://s.wordpress.com/mshots/v1/${encodeURIComponent(normalized)}?w=1200`
+    `https://s.wordpress.com/mshots/v1/${encodeURIComponent(siteUrl)}?w=1200`
 
   return NextResponse.json({
 
-    scores,
+    scores: site.scores,
 
-    reasons,
+    competitorScores: competitorData?.scores || null,
 
-    recommendations,
+    recommendations: site.recommendations,
 
-    pages:pages.map(p=>({
-      url:p.url,
-      issues:[]
-    })),
+    entities: site.entities,
 
-    entities,
-
-    schemaTypes:signals.hasFAQSchema
-      ? ["FAQPage","Organization"]
-      : ["Organization"],
-
-    previewImage,
-
-    competitor: competitor || null
+    previewImage
 
   })
 
