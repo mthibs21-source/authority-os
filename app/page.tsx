@@ -1,9 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import ScoreRing from "../components/ScoreRing"
-import AuthorityRadar from "../components/AuthorityRadar"
-import ScanProgress from "../components/ScanProgress"
 
 export default function Home() {
 
@@ -14,7 +11,18 @@ export default function Home() {
 
   const runScan = async () => {
 
-    if(!website) return
+    if(!website){
+      alert("Enter a website")
+      return
+    }
+
+    let formatted = website
+
+    if(!formatted.startsWith("http")){
+      formatted = "https://" + formatted
+    }
+
+    console.log("Scanning:",formatted)
 
     setLoading(true)
     setResults(null)
@@ -27,164 +35,157 @@ export default function Home() {
           "Content-Type":"application/json"
         },
         body:JSON.stringify({
-          website,
+          website:formatted,
           competitor
         })
       })
 
+      console.log("API status:",res.status)
+
+      if(!res.ok){
+
+        const text = await res.text()
+        console.error("API error:",text)
+
+        alert("Scan failed. Check console.")
+        setLoading(false)
+        return
+      }
+
       const data = await res.json()
+
+      console.log("Scan result:",data)
 
       setResults(data)
 
     }catch(err){
 
-      console.error("Scan failed",err)
+      console.error("Scan crashed:",err)
+      alert("Scan crashed. See console.")
 
     }
 
     setLoading(false)
-
   }
 
-  return(
+  return (
 
-    <main className="min-h-screen bg-[#030712] text-white">
+    <main className="min-h-screen bg-black text-white">
 
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="max-w-6xl mx-auto p-10">
 
-        {/* HERO */}
+        <h1 className="text-5xl font-bold mb-8">
+          Will AI recommend your website?
+        </h1>
 
-        <section className="pt-28 pb-16">
+        <p className="text-gray-400 mb-10">
+          Scan your website to see if AI search engines trust, understand,
+          and cite your content.
+        </p>
 
-          <h1 className="text-5xl font-bold max-w-3xl">
-            Will ChatGPT recommend your website?
-          </h1>
+        <div className="flex gap-4 mb-10">
 
-          <p className="text-gray-400 mt-6 max-w-xl">
-            AuthorityOS scans how AI search engines understand your site and
-            shows what prevents your business from being trusted and cited.
-          </p>
+          <input
+            value={website}
+            onChange={(e)=>setWebsite(e.target.value)}
+            placeholder="Your website"
+            className="bg-neutral-900 border border-neutral-700 p-3 rounded w-full"
+          />
 
-          {/* INPUTS */}
+          <input
+            value={competitor}
+            onChange={(e)=>setCompetitor(e.target.value)}
+            placeholder="Competitor (optional)"
+            className="bg-neutral-900 border border-neutral-700 p-3 rounded w-full"
+          />
 
-          <div className="flex flex-col md:flex-row gap-4 mt-10">
+          <button
+            onClick={runScan}
+            className="bg-yellow-400 text-black font-semibold px-6 rounded"
+          >
+            {loading ? "Scanning..." : "Run Scan"}
+          </button>
 
-            <input
-              value={website}
-              onChange={(e)=>setWebsite(e.target.value)}
-              placeholder="Enter your website"
-              className="bg-[#111827] border border-[#1f2937] rounded-lg px-4 py-3 w-full"
-            />
+        </div>
 
-            <input
-              value={competitor}
-              onChange={(e)=>setCompetitor(e.target.value)}
-              placeholder="Competitor (optional)"
-              className="bg-[#111827] border border-[#1f2937] rounded-lg px-4 py-3 w-full"
-            />
+        {loading && (
 
-            <button
-              onClick={runScan}
-              className="bg-[#eaff00] text-black px-8 py-3 rounded-lg font-semibold hover:opacity-90"
-            >
-              {loading ? "Scanning..." : "Run Scan"}
-            </button>
+          <div className="text-gray-400 space-y-2 mb-10">
 
-          </div>
-
-          {loading && <ScanProgress />}
-
-        </section>
-
-        {/* RESULTS */}
-
-        {results && results.scores && (
-
-        <section className="mt-24">
-
-          <h2 className="text-3xl font-bold mb-12">
-            Scan Results
-          </h2>
-
-          {/* SCORE RINGS */}
-
-          <div className="grid md:grid-cols-4 gap-10">
-
-            <ScoreRing
-              score={results.scores.authority}
-              label="Authority"
-            />
-
-            <ScoreRing
-              score={results.scores.aio}
-              label="AIO"
-            />
-
-            <ScoreRing
-              score={results.scores.geo}
-              label="GEO"
-            />
-
-            <ScoreRing
-              score={results.scores.aeo}
-              label="AEO"
-            />
+            <p>Analyzing entities...</p>
+            <p>Checking schema...</p>
+            <p>Mapping internal links...</p>
+            <p>Evaluating AI extraction...</p>
 
           </div>
 
-          {/* RADAR */}
+        )}
 
-          <div className="mt-20">
+        {results && (
 
-            <AuthorityRadar scores={results.scores} />
+          <div className="space-y-10">
 
-          </div>
+            <div className="grid grid-cols-4 gap-6">
 
-          {/* RECOMMENDATIONS */}
+              <Score title="Authority" value={results.scores.authority}/>
+              <Score title="AIO" value={results.scores.aio}/>
+              <Score title="GEO" value={results.scores.geo}/>
+              <Score title="AEO" value={results.scores.aeo}/>
 
-          {results.recommendations && (
+            </div>
 
-          <div className="mt-20">
+            <div>
 
-            <h3 className="text-2xl font-semibold mb-8">
-              Recommended Fixes
-            </h3>
+              <h2 className="text-xl mb-4">Recommendations</h2>
 
-            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-4">
 
-              {results.recommendations.map((rec:any,i:number)=>(
-                <div
-                  key={i}
-                  className="bg-[#0b1220] p-6 rounded-xl border border-[#1f2937]"
-                >
+                {results.recommendations.map((r:any,i:number)=>(
+                  <div key={i} className="bg-neutral-900 border border-neutral-700 p-4 rounded">
 
-                  <h4 className="font-semibold">
-                    {rec.title}
-                  </h4>
+                    <div className="font-semibold mb-1">
+                      {r.title}
+                    </div>
 
-                  <p className="text-sm text-gray-400 mt-2">
-                    Why it matters: {rec.reason}
-                  </p>
+                    <div className="text-gray-400 text-sm mb-2">
+                      {r.reason}
+                    </div>
 
-                  <p className="text-sm text-gray-500 mt-2">
-                    Fix: {rec.fix}
-                  </p>
+                    <div className="text-yellow-400 text-sm">
+                      Fix: {r.fix}
+                    </div>
 
-                </div>
-              ))}
+                  </div>
+                ))}
+
+              </div>
 
             </div>
 
           </div>
-
-          )}
-
-        </section>
 
         )}
 
       </div>
 
     </main>
+
+  )
+}
+
+function Score({title,value}:{title:string,value:number}){
+
+  return(
+    <div className="bg-neutral-900 border border-neutral-700 p-6 rounded text-center">
+
+      <div className="text-gray-400 text-sm mb-2">
+        {title}
+      </div>
+
+      <div className="text-3xl font-bold text-yellow-400">
+        {value}
+      </div>
+
+    </div>
   )
 }
