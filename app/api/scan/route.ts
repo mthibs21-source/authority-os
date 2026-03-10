@@ -1,155 +1,205 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
 
-async function fetchHTML(url: string) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0"
-    }
-  })
+async function fetchHTML(url:string){
 
-  const html = await res.text()
-  return html
+  try{
+
+    const res = await fetch(url,{
+      headers:{
+        "User-Agent":"Mozilla/5.0"
+      }
+    })
+
+    return await res.text()
+
+  }catch{
+
+    return ""
+  }
 }
 
-function detectSchema($: any) {
-  const schemas: string[] = []
+function extractLinks(html:string,domain:string){
 
-  $('script[type="application/ld+json"]').each((_: any, el: any) => {
-    try {
-      const json = JSON.parse($(el).html())
-      if (json["@type"]) schemas.push(json["@type"])
-    } catch {}
+  const $ = cheerio.load(html)
+
+  const links = new Set<string>()
+
+  $("a").each((_,el)=>{
+
+    const href = $(el).attr("href")
+
+    if(!href) return
+
+    if(href.startsWith("/") && links.size < 10){
+
+      links.add(domain + href)
+
+    }
+
+  })
+
+  return Array.from(links)
+
+}
+
+function detectSchema($:any){
+
+  const schemas:any[] = []
+
+  $('script[type="application/ld+json"]').each((_,el)=>{
+
+    try{
+
+      const json = JSON.parse($(el).html() || "")
+
+      if(json["@type"]) schemas.push(json["@type"])
+
+    }catch{}
+
   })
 
   return schemas
 }
 
-function detectFAQ($: any) {
-  let faqFound = false
+function detectFAQ($:any){
 
-  $("h2,h3").each((_: any, el: any) => {
+  let faq = false
+
+  $("h2,h3").each((_,el)=>{
+
     const text = $(el).text().toLowerCase()
 
-    if (
+    if(
       text.includes("faq") ||
-      text.includes("question") ||
-      text.includes("frequently asked")
-    ) {
-      faqFound = true
+      text.includes("frequently asked") ||
+      text.includes("questions")
+    ){
+      faq = true
     }
+
   })
 
-  return faqFound
+  return faq
 }
 
-function countInternalLinks($: any, domain: string) {
+function countInternalLinks($:any,domain:string){
+
   let count = 0
 
-  $("a").each((_: any, el: any) => {
+  $("a").each((_,el)=>{
+
     const href = $(el).attr("href")
 
-    if (href && href.includes(domain)) {
-      count++
-    }
+    if(href && href.includes(domain)) count++
+
   })
 
   return count
 }
 
-function scoreAuthority(schemaCount: number, internalLinks: number) {
-  let score = 40
+export async function POST(req:Request){
 
-  if (schemaCount > 0) score += 20
-  if (internalLinks > 20) score += 20
-  if (internalLinks > 50) score += 20
-
-  return Math.min(score, 100)
-}
-
-function scoreAEO(faq: boolean) {
-  return faq ? 80 : 30
-}
-
-function scoreAIO(schemaCount: number) {
-  return schemaCount > 0 ? 75 : 40
-}
-
-function scoreGEO(internalLinks: number) {
-  if (internalLinks > 50) return 80
-  if (internalLinks > 20) return 60
-  return 35
-}
-
-export async function POST(req: Request) {
-  try {
+  try{
 
     const { website, competitor } = await req.json()
 
-    if (!website) {
-      return NextResponse.json({ error: "Missing website" })
+    if(!website){
+
+      return NextResponse.json({error:"missing website"})
+
     }
 
-    const html = await fetchHTML(website)
+    const homepage = await fetchHTML(website)
 
-    const $ = cheerio.load(html)
+    const links = extractLinks(homepage,website)
 
-    const schema = detectSchema($)
-    const faq = detectFAQ($)
-    const links = countInternalLinks($, website)
+    const pages = [website,...links.slice(0,9)]
 
-    const authority = scoreAuthority(schema.length, links)
-    const aeo = scoreAEO(faq)
-    const aio = scoreAIO(schema.length)
-    const geo = scoreGEO(links)
+    let schemaCount = 0
+    let faqCount = 0
+    let linkCount = 0
 
-    const recommendations = []
+    for(const page of pages){
 
-    if (!faq) {
-      recommendations.push({
-        category: "AEO",
-        title: "Add FAQ sections",
-        reason: "Answer engines extract structured question-answer content",
-        fix: "Add FAQ blocks with schema markup to service pages"
-      })
+      const html = await fetchHTML(page)
+
+      if(!html) continue
+
+      const $ = cheerio.load(html)
+
+      const schema = detectSchema($)
+      const faq = detectFAQ($)
+      const links = countInternalLinks($,website)
+
+      schemaCount += schema.length
+      linkCount += links
+
+      if(faq) faqCount++
+
     }
 
-    if (schema.length === 0) {
+    const authority = Math.min(100,40 + schemaCount*5 + linkCount/5)
+    const aio = schemaCount > 0 ? 70 : 40
+    const geo = linkCount > 50 ? 80 : 40
+    const aeo = faqCount > 0 ? 75 : 30
+
+    const recommendations:any[] = []
+
+    if(schemaCount === 0){
+
       recommendations.push({
-        category: "AIO",
-        title: "Add schema markup",
-        reason: "AI relies heavily on structured data",
-        fix: "Add Organization and WebSite schema"
+        category:"AIO",
+        title:"Add structured schema",
+        reason:"AI systems rely heavily on schema markup",
+        fix:"Add Organization and WebSite schema to your pages"
       })
+
     }
 
-    if (links < 20) {
+    if(faqCount === 0){
+
       recommendations.push({
-        category: "GEO",
-        title: "Improve internal linking",
-        reason: "AI needs topical authority clusters",
-        fix: "Add contextual links between related pages"
+        category:"AEO",
+        title:"Add FAQ content",
+        reason:"Answer engines extract structured questions",
+        fix:"Add FAQ blocks and FAQ schema to key service pages"
       })
+
+    }
+
+    if(linkCount < 30){
+
+      recommendations.push({
+        category:"GEO",
+        title:"Improve internal linking",
+        reason:"Authority clusters help AI understand topics",
+        fix:"Link related pages and service clusters together"
+      })
+
     }
 
     return NextResponse.json({
-      scores: {
-        authority,
-        aio,
-        geo,
-        aeo
+
+      scores:{
+        authority:Math.round(authority),
+        aio:Math.round(aio),
+        geo:Math.round(geo),
+        aeo:Math.round(aeo)
       },
-      schemaDetected: schema,
-      faqDetected: faq,
-      internalLinks: links,
+
+      pagesScanned:pages.length,
+
       recommendations
+
     })
 
-  } catch (err) {
+  }catch(err){
 
-    return NextResponse.json({
-      error: "Scan failed"
-    })
+    console.error(err)
+
+    return NextResponse.json({error:"scan failed"})
 
   }
+
 }
