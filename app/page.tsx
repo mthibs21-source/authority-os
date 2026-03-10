@@ -1,15 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  ResponsiveContainer,
-  RadialBarChart,
-  RadialBar
-} from "recharts"
 
 export default function Home() {
 
@@ -36,269 +27,182 @@ export default function Home() {
 
   }
 
-  function ScoreCircle({value}:{value:number}){
-
-    const d=[{name:"score",value}]
-
-    return(
-
-      <div style={{width:120,height:120}}>
-
-        <ResponsiveContainer>
-
-          <RadialBarChart
-            innerRadius="80%"
-            outerRadius="100%"
-            data={d}
-            startAngle={90}
-            endAngle={-270}
-          >
-
-            <RadialBar
-              dataKey="value"
-              fill="#eaff00"
-              cornerRadius={10}
-            />
-
-          </RadialBarChart>
-
-        </ResponsiveContainer>
-
-      </div>
-
-    )
-
-  }
-
-  function RadarVisual(){
-
-    if(!data) return null
-
-    const radarData=[
-      {subject:"Authority",value:data.scores.authority},
-      {subject:"AIO",value:data.scores.aio},
-      {subject:"GEO",value:data.scores.geo},
-      {subject:"AEO",value:data.scores.aeo}
-    ]
-
-    return(
-
-      <div style={{width:"100%",height:260}}>
-
-        <ResponsiveContainer>
-
-          <RadarChart data={radarData}>
-
-            <PolarGrid stroke="#2a2a2a" />
-
-            <PolarAngleAxis dataKey="subject" stroke="#888"/>
-
-            <Radar
-              dataKey="value"
-              stroke="#eaff00"
-              fill="#eaff00"
-              fillOpacity={0.35}
-            />
-
-          </RadarChart>
-
-        </ResponsiveContainer>
-
-      </div>
-
-    )
-
-  }
-
   return(
 
     <main className="min-h-screen bg-[#020617] text-white">
 
-      <div className="max-w-6xl mx-auto p-8">
+      <div className="max-w-7xl mx-auto p-8">
 
-        <h1 className="text-3xl font-bold mb-6 text-[#eaff00]">
-          AuthorityOS
-        </h1>
+        {/* HEADER */}
 
-        <div className="flex gap-3 mb-8">
-
-          <input
-            placeholder="Website URL"
-            value={url}
-            onChange={(e)=>setUrl(e.target.value)}
-            className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
-          />
-
-          <input
-            placeholder="Competitor"
-            value={competitor}
-            onChange={(e)=>setCompetitor(e.target.value)}
-            className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
-          />
-
-          <button
-            onClick={scan}
-            className="bg-[#eaff00] text-black px-6 rounded font-semibold"
-          >
-            {loading ? "Scanning..." : "Scan"}
-          </button>
-
+        <div className="text-[#eaff00] font-semibold mb-12">
+          AI Visibility Scanner
         </div>
 
-        {data && (
 
-          <>
-            {/* SCORE CARDS */}
+        {/* HERO */}
 
-            <div className="grid grid-cols-4 gap-6 mb-10">
+        <div className="grid grid-cols-2 gap-16 items-center mb-20">
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
+          <div>
 
-                <ScoreCircle value={data.scores.authority}/>
+            <h1 className="text-6xl font-bold leading-tight mb-6">
 
-                <h3 className="mt-4 text-lg font-semibold">
-                  Authority
-                </h3>
+              Will <span className="text-[#eaff00]">ChatGPT</span><br/>
 
-                <p className="text-gray-400">
-                  {data.scores.authority} / 100
-                </p>
+              Recommend<br/>
 
+              Your Website?
+
+            </h1>
+
+            <p className="text-gray-400 text-lg mb-8 max-w-xl">
+
+              AI search engines like ChatGPT, Gemini, and Perplexity now
+              recommend businesses directly to users.
+
+              This scanner shows whether AI trusts your website,
+              where you're losing visibility, and exactly what to fix
+              so AI starts recommending you.
+
+            </p>
+
+            <div className="flex flex-wrap gap-3 mb-10 text-sm">
+
+              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
+                AI trust signals
               </div>
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
-
-                <ScoreCircle value={data.scores.aio}/>
-
-                <h3 className="mt-4 text-lg font-semibold">
-                  AIO
-                </h3>
-
-                <p className="text-gray-400">
-                  {data.scores.aio} / 100
-                </p>
-
+              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
+                Schema & entity detection
               </div>
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
-
-                <ScoreCircle value={data.scores.geo}/>
-
-                <h3 className="mt-4 text-lg font-semibold">
-                  GEO
-                </h3>
-
-                <p className="text-gray-400">
-                  {data.scores.geo} / 100
-                </p>
-
+              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
+                Competitor comparison
               </div>
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
-
-                <ScoreCircle value={data.scores.aeo}/>
-
-                <h3 className="mt-4 text-lg font-semibold">
-                  AEO
-                </h3>
-
-                <p className="text-gray-400">
-                  {data.scores.aeo} / 100
-                </p>
-
+              <div className="px-4 py-2 bg-[#0f172a] rounded-full border border-[#1e293b]">
+                Recommendation likelihood
               </div>
 
             </div>
 
-            {/* RADAR GRAPH */}
 
-            <div className="bg-[#0f172a] rounded-xl p-6 mb-10">
+            {/* SCAN BAR */}
 
-              <h2 className="text-xl mb-4">
-                Authority Breakdown
-              </h2>
+            <div className="flex gap-3">
 
-              <RadarVisual/>
+              <input
+                placeholder="Enter website"
+                value={url}
+                onChange={(e)=>setUrl(e.target.value)}
+                className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
+              />
+
+              <input
+                placeholder="Competitor"
+                value={competitor}
+                onChange={(e)=>setCompetitor(e.target.value)}
+                className="bg-[#0f172a] border border-[#1e293b] p-3 rounded w-full"
+              />
+
+              <button
+                onClick={scan}
+                className="bg-[#eaff00] text-black px-6 rounded font-semibold"
+              >
+                {loading ? "Scanning..." : "Scan"}
+              </button>
 
             </div>
 
-            {/* WEBSITE PREVIEW */}
+          </div>
 
-            <div className="grid grid-cols-2 gap-6 mb-10">
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
+          {/* RIGHT PANEL */}
 
-                <h3 className="mb-4">Website Preview</h3>
+          <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-8">
 
-                <img
-                  src={data.previewImage}
-                  className="rounded-lg"
-                />
+            <div className="text-gray-400 mb-6">
+              What you'll discover
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+
+              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
+
+                <div className="font-semibold">
+                  AI Trust Score
+                </div>
+
+                <div className="text-gray-400 text-sm">
+                  See if AI trusts your site enough to recommend it
+                </div>
 
               </div>
 
-              <div className="bg-[#0f172a] p-6 rounded-xl">
+              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
 
-                <h3 className="mb-4">Entities</h3>
+                <div className="font-semibold">
+                  Why AI Doesn't Recommend You
+                </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="text-gray-400 text-sm">
+                  The missing signals AI uses to decide trust
+                </div>
 
-                  {data.entities.map((e:string,i:number)=>(
-                    <span
-                      key={i}
-                      className="bg-[#1e293b] px-3 py-1 rounded"
-                    >
-                      {e}
-                    </span>
-                  ))}
+              </div>
 
+              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
+
+                <div className="font-semibold">
+                  Pages Holding You Back
+                </div>
+
+                <div className="text-gray-400 text-sm">
+                  Which URLs weaken your AI visibility
+                </div>
+
+              </div>
+
+              <div className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]">
+
+                <div className="font-semibold">
+                  How to Fix It
+                </div>
+
+                <div className="text-gray-400 text-sm">
+                  Clear steps to increase AI recommendation likelihood
                 </div>
 
               </div>
 
             </div>
 
-            {/* RECOMMENDATIONS */}
+            <div className="text-gray-400 text-sm mb-2">
+              Example outcome
+            </div>
 
-            <div className="bg-[#0f172a] p-6 rounded-xl">
+            <div className="font-semibold mb-4">
 
-              <h2 className="text-xl mb-6">
-                Recommendations
-              </h2>
-
-              <div className="space-y-4">
-
-                {data.recommendations.map((r:any,i:number)=>(
-                  <div
-                    key={i}
-                    className="bg-[#020617] p-4 rounded-lg border border-[#1e293b]"
-                  >
-
-                    <h4 className="font-semibold mb-2">
-                      {r.title}
-                    </h4>
-
-                    <p className="text-gray-400 mb-2">
-                      {r.why}
-                    </p>
-
-                    <ul className="text-gray-300 list-disc ml-5">
-
-                      {r.how.map((h:string,j:number)=>(
-                        <li key={j}>{h}</li>
-                      ))}
-
-                    </ul>
-
-                  </div>
-                ))}
-
-              </div>
+              Add organization schema, strengthen topical authority,
+              and expand FAQ answers so AI systems confidently
+              recommend your website.
 
             </div>
 
-          </>
-        )}
+            <div className="w-full bg-[#1e293b] h-2 rounded">
+
+              <div className="bg-[#eaff00] h-2 rounded w-[60%]" />
+
+            </div>
+
+            <div className="text-gray-400 text-sm mt-2">
+              Potential AI visibility increase: +14%
+            </div>
+
+          </div>
+
+        </div>
 
       </div>
 
